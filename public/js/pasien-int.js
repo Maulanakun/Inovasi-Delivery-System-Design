@@ -9,7 +9,24 @@
   var DEMO_RM = '12-34-56';
   var GET = function (p) { return HQ.api(p); };
   var POST = function (p, b) { return HQ.api(p, { method: 'POST', body: b || {} }); };
-  var QNA = { add: null, read: null };
+  var QNA = { add: null, read: null, del: null };
+  /** Perbesar gambar di dalam halaman (bukan tab baru: blob URL di tab baru sering kosong di HP / aplikasi terpasang). */
+  function zoomImg(url, alt) {
+    var o = document.createElement('div');
+    o.setAttribute('role', 'dialog'); o.setAttribute('aria-label', 'Gambar radiologi');
+    o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px';
+    var im = document.createElement('img');
+    im.src = url; im.alt = alt || 'Gambar radiologi';
+    im.style.cssText = 'max-width:100%;max-height:82vh;object-fit:contain;border-radius:6px;background:#111';
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = 'Tutup ✕';
+    b.style.cssText = 'background:#fff;color:#0d3b73;border:0;border-radius:10px;padding:10px 18px;font:600 15px system-ui,sans-serif;cursor:pointer';
+    function close() { o.remove(); document.removeEventListener('keydown', esc2); }
+    function esc2(e) { if (e.key === 'Escape') close(); }
+    b.onclick = close; o.onclick = function (e) { if (e.target === o) close(); };
+    document.addEventListener('keydown', esc2);
+    o.appendChild(im); o.appendChild(b); document.body.appendChild(o); b.focus();
+  }
   var PTU = 0; // jumlah balasan perawat yang belum dibaca
 
   /* ---------- penanda pesan belum dibaca (badge menu + banner) ---------- */
@@ -111,8 +128,18 @@
         p.innerHTML = '<button class="lk" id="bl" style="color:var(--pri)">‹ Resume</button><h2>' + esc(d.title) + '</h2><p class="sub">' + esc(d.authorName) + ' · ' + HQ.fmtD(d.finalizedAt || d.createdAt) + '</p>' +
           rows(RF.filter(function (f) { return c[f[0]]; }).map(function (f) { return ['📄', f[1], esc(c[f[0]]).replace(/\n/g, '<br>')]; })) +
           (sn.medications && sn.medications.length ? '<b>Obat</b>' + rows(sn.medications.map(function (m) { return ['💊', esc(m.name), esc(m.dose)]; })) : '') +
+          (sn.radiology && sn.radiology.length ? '<b>Hasil radiologi</b>' + sn.radiology.map(function (r) {
+            return '<div style="border:1px solid var(--bd,#d9e5f2);border-radius:12px;padding:10px;margin:6px 0"><b>' + esc(r.title) + '</b> · ' + esc(r.modality) + '<br><small>' + HQ.fmtD(r.examinedAt) + ' · ' + esc(r.radiologist) + '</small>' +
+              '<img data-rid="' + r.id + '" alt="' + esc(r.title) + '" style="display:block;max-width:100%;max-height:220px;margin:8px 0;border-radius:8px;cursor:zoom-in;background:#eef3f8"><p><b>Temuan:</b><br>' + esc(r.findings).replace(/\n/g, '<br>') + '</p><p><b>Kesan:</b><br>' + esc(r.impression).replace(/\n/g, '<br>') + '</p></div>';
+          }).join('') : '') +
           '<button class="btn alt" onclick="window.print()">🖨️ Cetak / simpan PDF</button>';
         document.getElementById('bl').onclick = list;
+        p.querySelectorAll('img[data-rid]').forEach(function (im) {
+          fetch(HQ.BASE + '/api/radiology/' + im.getAttribute('data-rid') + '/image', { headers: { Authorization: 'Bearer ' + (HQ.session.get() || {}).token } })
+            .then(function (x) { if (!x.ok) throw new Error(); return x.blob(); })
+            .then(function (b) { var u = URL.createObjectURL(b); im.src = u; im.onclick = function () { zoomImg(u, im.alt); }; })
+            .catch(function () { im.alt = 'Gambar tidak dapat dimuat'; });
+        });
       }).catch(function (e) { HQ.toast(e.message); });
     }
     list();
@@ -214,7 +241,7 @@
   HQ.room = function (p, a, m, back, T, mkSum) {
     var nm = a ? a.n.split(' (')[0] : 'Perawat penghubung';
     function fin() {
-      QNA.add = null; QNA.read = null;
+      QNA.add = null; QNA.read = null; QNA.del = null;
       if (a) { a.done = true; a.sum = mkSum(a); if (a.tp === 'B') T.bl.unshift(a); back('Konsultasi selesai. Ringkasannya tersimpan dan bisa dilihat di Riwayat Layanan. Konsultasi tidak dapat diulang.'); } else back('');
     }
     if (m === 'chat') {
@@ -226,8 +253,10 @@
         box.innerHTML = msgs.length ? msgs.map(function (x) {
           var me = x.from === 'pasien', u = unr.indexOf(x.id) >= 0;
           return (x.id === divId ? '<div class="nl" role="separator">Pesan belum dibaca</div>' : '') +
-            '<div class="bub ' + (me ? 'me' : 'nu') + (u ? ' unr' : '') + '">' + (me ? '' : '<small style="display:block;opacity:.75">' + esc(x.senderName) + (u ? ' · BARU' : '') + '</small>') + esc(x.body) +
-            '<small style="display:block;opacity:.7;font-size:11px">' + HQ.fmtDT(x.createdAt) + '</small>' + (me ? '<small class="tk' + (x.readAt ? ' rd' : '') + '">' + (x.readAt ? '✓✓ Dibaca perawat' : '✓ Terkirim') + '</small>' : '') + '</div>';
+            '<div class="bub ' + (me ? 'me' : 'nu') + (u && !x.deleted ? ' unr' : '') + '">' + (me ? '' : '<small style="display:block;opacity:.75">' + esc(x.senderName) + (u && !x.deleted ? ' · BARU' : '') + '</small>') +
+            (x.deleted ? '<i style="opacity:.7">🚫 Pesan ini telah dihapus</i>' : esc(x.body)) +
+            '<small style="display:block;opacity:.7;font-size:11px">' + HQ.fmtDT(x.createdAt) + '</small>' +
+            (me && !x.deleted ? '<small class="tk' + (x.readAt ? ' rd' : '') + '">' + (x.readAt ? '✓✓ Dibaca perawat' : '✓ Terkirim') + '</small><button type="button" data-del="' + x.id + '" aria-label="Hapus pesan" style="background:none;border:0;color:inherit;opacity:.75;font-size:11px;cursor:pointer;padding:2px 0;text-decoration:underline">🗑 Hapus</button>' : '') + '</div>';
         }).join('') : '<div class="empty">Belum ada pesan.</div>';
         window.scrollTo(0, document.body.scrollHeight);
       };
@@ -237,6 +266,16 @@
         if (x.from === 'nakes' && document.hidden) { unr.push(x.id); if (!divId) divId = x.id; }
         msgs.push(x); drawM(); markRead();
         return true;
+      };
+      QNA.del = function (id) {
+        msgs.forEach(function (y) { if (y.id === id) { y.deleted = true; y.body = ''; } });
+        if (document.getElementById('qm')) drawM();
+      };
+      box.onclick = function (e) {
+        var b = e.target.closest ? e.target.closest('[data-del]') : null; if (!b) return;
+        var id = Number(b.getAttribute('data-del'));
+        if (!confirm('Hapus pesan ini? Pesan akan hilang juga bagi perawat.')) return;
+        HQ.api('/qna/' + enc(PT.rm) + '/messages/' + id, { method: 'DELETE' }).then(function () { QNA.del(id); }).catch(function (er) { HQ.toast(er.message); });
       };
       QNA.read = function (d) { // perawat sudah membaca pesan kita -> centang dua
         if (d.by !== 'nakes') return; var t = new Date().toISOString();
@@ -283,6 +322,7 @@
         HQ.toast('💬 Balasan dari ' + x.senderName + ': ' + (x.body.length > 50 ? x.body.slice(0, 47) + '…' : x.body));
       });
       sock.on('qna:read', function (d) { if (QNA.read) QNA.read(d); });
+      sock.on('qna:deleted', function (d) { if (QNA.del) QNA.del(d.id); else refreshUnread(); });
       sock.on('connect', refreshUnread);
       sock.on('notification', function (n) { if (/Balasan dari/.test(n.text) === false) HQ.toast((n.icon || '🔔') + ' ' + n.text); });
     }).catch(function () { HQ.toast('Koneksi realtime gagal. Pesan baru akan tampil setelah halaman dimuat ulang.'); });

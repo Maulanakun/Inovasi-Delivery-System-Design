@@ -5,7 +5,7 @@ import { asyncHandler, HttpError } from '../util.js';
 import { authenticate, requireNakes, patientAccess } from '../middleware/auth.js';
 import {
   ensurePatientRoom, getOrCreateDirect, createGroup, listRooms, listMembers, listTeamMessages,
-  sendTeamMessage, markTeamRead, assertMember, addMembers, removeMember,
+  sendTeamMessage, markTeamRead, assertMember, addMembers, removeMember, deleteTeamMessage,
 } from '../services/team.js';
 
 const r = Router();
@@ -96,6 +96,10 @@ r.post('/rooms/:id/messages', asyncHandler(async (req, res) => {
   const p = normalizeTeamPayload(req.body);
   res.status(201).json(sendTeamMessage({ roomId: Number(req.params.id), user: req.user, ...p }));
 }));
+
+r.delete('/rooms/:id/messages/:msgId', (req, res) => {
+  res.json(deleteTeamMessage({ roomId: Number(req.params.id), user: req.user, id: Number(req.params.msgId) }));
+});
 
 r.post('/rooms/:id/read', (req, res) => {
   assertMember(Number(req.params.id), req.user.id);

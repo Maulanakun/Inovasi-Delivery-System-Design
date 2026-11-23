@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS qna_messages(
   body TEXT NOT NULL,
   urgent INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT ${NOW},
-  read_at TEXT
+  read_at TEXT,
+  deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_qna_patient ON qna_messages(patient_id, id);
 
@@ -115,7 +116,8 @@ CREATE TABLE IF NOT EXISTS team_messages(
   kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text','konsultasi','handover')),
   body TEXT NOT NULL,
   meta TEXT,
-  created_at TEXT NOT NULL DEFAULT ${NOW}
+  created_at TEXT NOT NULL DEFAULT ${NOW},
+  deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_team_msg ON team_messages(room_id, id);
 
@@ -185,6 +187,24 @@ CREATE TABLE IF NOT EXISTS symptom_logs(
   UNIQUE(patient_id, log_date)
 );
 
+-- Radiologi: gambar disimpan sebagai file di <folder data>/radiology, metadata di tabel ini.
+CREATE TABLE IF NOT EXISTS radiology_results(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  patient_id INTEGER NOT NULL REFERENCES patients(id),
+  modality TEXT NOT NULL,
+  title TEXT NOT NULL,
+  examined_at TEXT NOT NULL,
+  findings TEXT NOT NULL,
+  impression TEXT NOT NULL,
+  image_file TEXT NOT NULL,
+  image_mime TEXT NOT NULL,
+  image_name TEXT,
+  image_size INTEGER NOT NULL,
+  uploaded_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT ${NOW}
+);
+CREATE INDEX IF NOT EXISTS idx_radiology_patient ON radiology_results(patient_id, id);
+
 CREATE TABLE IF NOT EXISTS notifications(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -201,6 +221,12 @@ CREATE TABLE IF NOT EXISTS audit_log(
   created_at TEXT NOT NULL DEFAULT ${NOW}
 );
 `);
+
+// Migrasi untuk database lama: tambah kolom deleted_at (hapus pesan = soft delete) bila belum ada.
+for (const table of ['qna_messages', 'team_messages']) {
+  const cols = raw.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes('deleted_at')) raw.exec(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
+}
 
 // ---- query helpers ----
 export const getUserById = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);

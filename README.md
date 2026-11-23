@@ -9,6 +9,7 @@ Express + Socket.IO + LiveKit + SQLite bawaan Node (`node:sqlite`, tanpa kompila
 | 3 | Chat multidisiplin antar nakes (grup pasien, DM, konsultasi, handover) | Socket.IO + REST | `services/team.js`, `routes/team.js` |
 | 4 | Resume medis (CPPT, obat, lab → draft → final → kirim) | REST | `services/summary.js`, `routes/summaries.js` |
 | 5 | Monitoring (catatan gejala harian + triase zona) | REST + Socket.IO (alert) | `services/monitoring.js`, `services/triage.js` |
+| 6 | Radiologi (unggah gambar + temuan/kesan oleh dokter spesialis radiologi, bisa dimasukkan ke resume) | REST | `services/radiology.js`, `routes/radiology.js` |
 
 ## Menjalankan
 
@@ -29,7 +30,7 @@ Lalu buka **http://localhost:3000** — backend menyajikan frontend dari folder 
 | `/nakes.html` | Portal nakes (dashboard, pasien, CPPT, resep, lab, resume, komunikasi, monitoring, panggilan) |
 | `/pasien.html` | Aplikasi pasien (catatan gejala, TEMU chat/video/telepon, hasil lab, resep, resume) |
 
-Akun demo (password semua `demo123`): **nakes** `dr.rina@hfcare.demo`, `dr.lina@…`, `ns.dewi@…`, `ns.fajar@…`, `apt.dinda@…`, `putri.gizi@…` (domain `@hfcare.demo`); **pasien** RM `12-34-56` (Tn. Budi).
+Akun demo (password semua `demo123`): **nakes** `dr.rina@hfcare.demo`, `dr.arman@…` (radiolog), `dr.lina@…`, `ns.dewi@…`, `ns.fajar@…`, `apt.dinda@…`, `putri.gizi@…` (domain `@hfcare.demo`); **pasien** RM `12-34-56` (Tn. Budi).
 Coba *Buat akun baru*: RM `12-34-78` + lahir `2 Mar 1954`, atau RM `12-35-01` + lahir `20 Jan 1965`.
 > Database lama (`data/hatiqu.db`) tetap kompatibel (skema tidak berubah). Untuk memakai tanggal lahir demo baru, hapus `data/hatiqu.db*` lalu `npm run seed`.
 
@@ -67,6 +68,13 @@ Pesan punya `kind`: `text`, `konsultasi` (`meta:{to,urgency:'rutin'|'segera'}`),
 - Data pendukung: `GET|POST /api/patients/:rm/cppt` (`{S,O,A,P}`), `GET|POST /api/patients/:rm/medications` (POST: dokter), `POST …/medications/:id/review {note}` (apoteker), `GET|POST /api/patients/:rm/labs`.
 - `GET /api/patients/:rm/resume-preview` — gabungan otomatis (CPPT terbaru, obat, lab terbaru, monitoring 7 hari).
 - `POST /api/patients/:rm/summaries` (dokter) → draft · `PATCH /api/summaries/:id` (hanya draft) · `POST /api/summaries/:id/finalize` (snapshot dibekukan, tidak bisa diedit) · `POST /api/summaries/:id/send {facility, note}` (tercatat sebagai handover di grup tim) · `GET /api/summaries/:id`. Pasien hanya melihat resume final/terkirim miliknya.
+
+**6. Radiologi**
+- `GET /api/patients/:rm/radiology` — daftar hasil (nakes: semua pasien; pasien: miliknya sendiri).
+- `POST /api/patients/:rm/radiology` — **hanya dokter spesialis radiologi**. Body JSON: `{modality, title, examinedAt:'YYYY-MM-DD', findings, impression, image:{name, data:<base64>}}`. Gambar JPG/PNG/WebP maks. 8 MB (tipe dicek dari isi file, bukan nama). File disimpan di `<folder data>/radiology/` (bukan folder publik).
+- `GET /api/radiology/:id/image` — gambar, butuh token (nakes, atau pasien pemilik). Di frontend diambil dengan `fetch` + header `Authorization` lalu dijadikan blob URL.
+- Resume: `content.radiologiIds: number[]` pada `POST/PATCH` resume memilih hasil yang dimasukkan. Teks hasil dibekukan di `snapshot.radiology` saat resume difinalisasi; gambar dirujuk lewat id.
+- Profesi baru `Dokter spesialis radiologi` (tetap bisa melakukan hal yang boleh untuk dokter lain). Demo: `dr.arman@hfcare.demo`.
 
 **5. Monitoring**
 - `POST /api/monitoring/:rm/logs` — catatan harian; body: `{date?, weight, systolic, diastolic, pulse, glucose, cholesterol, uricAcid, symptoms[], durationDays, chestPain:{scale,radiates,relievedByRest}, restDyspnea, syncope, note}`. Selisih BB 3 hari dan zona (hijau/kuning/merah) **dihitung server** dengan aturan yang sama seperti `triage()` di POV Pasien. Respons berisi `zona`, `reasons`, `advice`.

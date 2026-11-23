@@ -16,6 +16,7 @@ const addUser = db.prepare('INSERT INTO users(username, email, password_hash, na
 
 const NAKES = [
   ['dr.rina', 'dr. Rina Wulandari, Sp.JP', 'Dokter spesialis', 'RS Kota Malang — Poli Jantung'],
+  ['dr.arman', 'dr. Arman Pratama, Sp.Rad', 'Dokter spesialis radiologi', 'RS Kota Malang — Radiologi'],
   ['dr.lina', 'dr. Lina Maharani', 'Dokter umum', 'Puskesmas Wilayah — Poli Umum'],
   ['ns.maria', 'Ns. Maria Kristina', 'Perawat', 'RS Kota Malang — Perawat Jaga'],
   ['ns.dewi', 'Ns. Dewi Anggraini', 'Perawat case manager', 'RS Kota Malang — Perawat Penghubung'],

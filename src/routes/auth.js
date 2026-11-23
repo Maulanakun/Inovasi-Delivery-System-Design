@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db, publicUser, getPatientByUserId } from '../db/index.js';
 import { asyncHandler } from '../util.js';
 import { authenticate, signToken } from '../middleware/auth.js';
-import { loginPatient, loginNakes, registerPatient } from '../services/auth.js';
+import { loginPatient, loginNakes, registerPatient, registerNakes, PROFESSIONS } from '../services/auth.js';
 
 const r = Router();
 
@@ -21,6 +21,15 @@ const registerSchema = z.object({
   rm: z.string().trim().min(4).max(20),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal lahir YYYY-MM-DD'),
   password: z.string().min(8, 'Kata sandi minimal 8 karakter').max(200),
+});
+
+const registerNakesSchema = z.object({
+  name: z.string().trim().min(3, 'Nama lengkap minimal 3 karakter').max(120),
+  email: z.string().trim().toLowerCase().email('Format email tidak valid').max(200),
+  profession: z.enum(PROFESSIONS, { errorMap: () => ({ message: 'Pilih profesi yang tersedia' }) }),
+  facility: z.string().trim().min(2, 'Isi nama fasilitas').max(150),
+  password: z.string().min(8, 'Kata sandi minimal 8 karakter').max(200),
+  code: z.string().trim().min(1, 'Isi kode pendaftaran').max(100),
 });
 
 /**
@@ -41,6 +50,15 @@ r.post('/register', registerLimiter, asyncHandler(async (req, res) => {
   const { user, patientRm } = registerPatient(registerSchema.parse(req.body));
   res.status(201).json({ token: signToken(user), user: publicUser(user), patientRm });
 }));
+
+/** Tenaga kesehatan membuat akun sendiri (dibatasi kode pendaftaran fasilitas). */
+r.post('/register-nakes', registerLimiter, asyncHandler(async (req, res) => {
+  const { user, patientRm } = registerNakes(registerNakesSchema.parse(req.body));
+  res.status(201).json({ token: signToken(user), user: publicUser(user), patientRm });
+}));
+
+/** Daftar profesi untuk form pendaftaran nakes. */
+r.get('/professions', (_req, res) => res.json(PROFESSIONS));
 
 r.get('/me', authenticate, (req, res) => {
   const patient = req.user.role === 'pasien' ? getPatientByUserId(req.user.id) : null;

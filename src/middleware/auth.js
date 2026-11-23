@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { getUserById, getPatientByRm, audit } from '../db/index.js';
-import { HttpError, normRm } from '../util.js';
+import { HttpError, normRm, isRadiologist } from '../util.js';
 
 export const signToken = (user) =>
   jwt.sign({ sub: user.id, role: user.role }, config.jwtSecret, { expiresIn: config.jwtTtl });
@@ -33,6 +33,9 @@ export const requireProfession = (...professions) => (req, _res, next) =>
   req.user?.role === 'nakes' && professions.some((p) => req.user.profession?.startsWith(p))
     ? next()
     : next(new HttpError(403, `Hanya untuk: ${professions.join(', ')}`));
+
+export const requireRadiologist = (req, _res, next) =>
+  isRadiologist(req.user) ? next() : next(new HttpError(403, 'Hanya dokter spesialis radiologi yang dapat mengunggah hasil radiologi'));
 
 /**
  * Memuat :rm ke req.patient dan memastikan akses:

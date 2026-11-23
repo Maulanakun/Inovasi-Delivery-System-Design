@@ -20,11 +20,12 @@ var rv = 0, topNext = true, TABS = {};
 var UN = { qna: 0, qnaBy: {}, team: 0, peer: {}, grp: {} }; // pesan belum dibaca
 
 var NAV = [['dash', '🏠', 'Dashboard'], ['pasien', '👤', 'Data Pasien'], ['cppt', '📝', 'CPPT'], ['resep', '💊', 'Resep dan Obat'],
-  ['lab', '🧪', 'Lab dan Penunjang'], ['rujuk', '📋', 'Resume dan Rujukan'], ['kom', '💬', 'Komunikasi Tim'], ['mon', '❤️', 'Monitoring'],
+  ['lab', '🧪', 'Lab dan Penunjang'], ['radio', '🩻', 'Radiologi'], ['rujuk', '📋', 'Resume dan Rujukan'], ['kom', '💬', 'Komunikasi Tim'], ['mon', '❤️', 'Monitoring'],
   ['jadwal', '📅', 'Jadwal Follow-up'], ['tim', '👥', 'Tim Multidisiplin'], ['integ', '🔗', 'Integrasi Data']];
 
 var ROLE_DESC = {
   'Dokter spesialis': 'DPJP: terapi, penyesuaian obat, kontrol poli',
+  'Dokter spesialis radiologi': 'Membaca dan mengunggah hasil radiologi',
   'Dokter umum': 'Pemantauan rutin dan rujuk balik',
   'Perawat': 'Kunjungan, edukasi, pemantauan pasien',
   'Perawat case manager': 'Kontak utama, telepon tindak lanjut, memantau zona gejala',
@@ -37,6 +38,7 @@ var ROLE_DESC = {
 /* ---------- helper ---------- */
 function prof() { return (me && me.profession) || ''; }
 function isDok() { return /^Dokter/i.test(prof()); }
+function isRad() { return isDok() && /radiolog/i.test(prof()); }
 function isApt() { return prof() === 'Apoteker'; }
 function isPer() { return /^Perawat/i.test(prof()); }
 var ZN = { hijau: ['g', 'Hijau'], kuning: ['y', 'Kuning'], merah: ['r', 'Merah'] };
@@ -173,6 +175,12 @@ function startSocket() {
         } else addMsg(m);
       }
     });
+    sock.on('qna:deleted', function (d) {
+      if (live.kind === 'qna' && live.qnaRm === d.rm) markDeleted(d.id); else refreshUnread();
+    });
+    sock.on('team:deleted', function (d) {
+      if (live.kind === 'team' && live.roomId === d.roomId) markDeleted(d.id); else refreshUnread();
+    });
     sock.on('qna:read', function (d) {
       if (d.by === 'pasien' && live.kind === 'qna' && live.qnaRm === d.rm) {
         var t = new Date().toISOString();
@@ -235,11 +243,11 @@ function go(p) {
 }
 function render() {
   var v = ++rv, pg = $('#pg');
-  var fn = { dash: dash, pasien: pasien, cppt: cppt, resep: resep, lab: lab, rujuk: rujuk, kom: kom, mon: mon, jadwal: jadwal, tim: tim, integ: integ }[page];
+  var fn = { dash: dash, pasien: pasien, cppt: cppt, resep: resep, lab: lab, radio: radio, rujuk: rujuk, kom: kom, mon: mon, jadwal: jadwal, tim: tim, integ: integ }[page];
   return Promise.resolve().then(fn).then(function (out) {
     if (v !== rv) return;
     var html = typeof out === 'string' ? out : out.html;
-    pg.innerHTML = html; drawNt(); drawBadges();
+    pg.innerHTML = html; drawNt(); drawBadges(); hydrateImgs(pg);
     if (topNext) { pg.scrollTop = 0; topNext = false; }
     if (out && out.after) out.after();
   }).catch(function (e) {
@@ -426,6 +434,113 @@ function addLab(e) {
   return act(function () { return POST('/patients/' + encodeURIComponent(cp) + '/labs', b).then(render); }, 'Hasil tersimpan').then(function () { return false; });
 }
 
+/* ================= 5b. Radiologi ================= */
+var MODS = ['Rontgen', 'CT Scan', 'MRI', 'USG', 'Angiografi', 'Lainnya'];
+var IMGC = {};
+/** Gambar radiologi dilayani endpoint terautentikasi, jadi diambil dengan fetch + token lalu dijadikan blob URL. */
+function imgUrl(id) {
+  if (IMGC[id]) return Promise.resolve(IMGC[id]);
+  var s = HQ.session.get();
+  return fetch(HQ.BASE + '/api/radiology/' + id + '/image', { headers: { Authorization: 'Bearer ' + (s && s.token) } })
+    .then(function (r) { if (!r.ok) throw new Error('Gambar tidak dapat dimuat'); return r.blob(); })
+    .then(function (b) { return (IMGC[id] = URL.createObjectURL(b)); });
+}
+function hydrateImgs(root) {
+  (root || document).querySelectorAll('img[data-rid]:not([data-ok])').forEach(function (im) {
+    im.setAttribute('data-ok', '1');
+    imgUrl(im.getAttribute('data-rid')).then(function (u) { im.src = u; }).catch(function () { im.alt = 'Gambar tidak dapat dimuat'; });
+  });
+}
+function openImg(id) {
+  imgUrl(id).then(function (u) {
+    var o = document.createElement('div'); o.className = 'lbx'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-label', 'Gambar radiologi');
+    o.innerHTML = '<img src="' + u + '" alt="Gambar radiologi"><button class="btn" type="button">Tutup ✕</button>';
+    o.onclick = function (e) { if (e.target.tagName !== 'IMG') o.remove(); };
+    document.body.appendChild(o); o.querySelector('button').focus();
+  }).catch(function (e) { toast(e.message); });
+}
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { var o = document.querySelector('.lbx'); if (o) o.remove(); } });
+
+function radImg(id, title) { return '<img data-rid="' + id + '" class="rthumb" alt="' + esc(title) + '" onclick="openImg(' + id + ')" title="Klik untuk memperbesar">'; }
+function radBody(r) {
+  return '<b>' + esc(r.title) + '</b> <span class="bd">' + esc(r.modality) + '</span> <small style="color:var(--mu)">' + HQ.fmtD(r.examinedAt) + ' · ' + esc(r.radiologist) + '</small>' +
+    radImg(r.id, r.title) + '<p><b>Temuan:</b><br>' + esc(r.findings).replace(/\n/g, '<br>') + '</p><p><b>Kesan:</b><br>' + esc(r.impression).replace(/\n/g, '<br>') + '</p>';
+}
+function radio() {
+  if (!cp) return noPatient();
+  return GET('/patients/' + encodeURIComponent(cp) + '/radiology').then(function (list) {
+    var p = patientOf(cp);
+    var form = isRad()
+      ? '<form class="card" onsubmit="return upRad(event)"><h3>Unggah hasil radiologi</h3><div class="grid">' +
+        '<div><label for="rd_dt">Tanggal pemeriksaan</label><input id="rd_dt" type="date" required value="' + HQ.todayISO() + '" max="' + HQ.todayISO() + '"></div>' +
+        '<div><label for="rd_md">Modalitas</label><select id="rd_md">' + MODS.map(function (m) { return '<option>' + m + '</option>'; }).join('') + '</select></div>' +
+        '<div><label for="rd_ti">Nama pemeriksaan</label><input id="rd_ti" required maxlength="150" placeholder="mis. Foto toraks PA"></div></div>' +
+        '<label for="rd_fi">Gambar (JPG, PNG, atau WebP, maks. 8 MB)</label><input id="rd_fi" type="file" accept="image/png,image/jpeg,image/webp" required onchange="prevRad(this)">' +
+        '<img id="rd_pv" class="rthumb" hidden alt="Pratinjau gambar">' +
+        '<label for="rd_fd">Temuan</label><textarea id="rd_fd" required maxlength="4000"></textarea>' +
+        '<label for="rd_im">Kesan / kesimpulan</label><textarea id="rd_im" required maxlength="2000"></textarea>' +
+        '<p class="tag">Untuk pasien: <b>' + esc(p ? p.name + ' (' + p.rm + ')' : cp) + '</b>. Periksa sekali lagi sebelum menyimpan; hasil yang tersimpan tidak bisa diubah.</p>' +
+        '<button class="btn" style="margin-top:.5rem">Simpan hasil radiologi</button></form>'
+      : '<div class="card ro">Hanya dokter spesialis radiologi yang dapat mengunggah hasil radiologi. Dokter yang menyusun resume dapat memilih hasil di bawah ini untuk dimasukkan ke resume.</div>';
+    return '<h2>Radiologi</h2>' + pbar() + form +
+      (list.map(function (r) { return '<div class="card">' + radBody(r) + '</div>'; }).join('') || '<div class="card">Belum ada hasil radiologi untuk pasien ini.</div>');
+  });
+}
+function prevRad(inp) {
+  var im = q('rd_pv'), f = inp.files && inp.files[0];
+  if (!f) { im.hidden = true; return; }
+  if (f.size > 40 * 1024 * 1024) { toast('File terlalu besar'); inp.value = ''; im.hidden = true; return; }
+  im.src = URL.createObjectURL(f); im.hidden = false;
+}
+function fileB64(blob) {
+  return new Promise(function (res, rej) {
+    var fr = new FileReader();
+    fr.onload = function () { res(String(fr.result).split(',')[1]); };
+    fr.onerror = function () { rej(new Error('Gagal membaca file')); };
+    fr.readAsDataURL(blob);
+  });
+}
+/** File > 3 MB diperkecil di browser (sisi terpanjang maks. 2600 px, JPEG kualitas 90%) agar unggahan cepat dan di bawah batas server. */
+function prepImage(file) {
+  var MAXB = 8 * 1024 * 1024;
+  if (file.size <= 3 * 1024 * 1024) return fileB64(file).then(function (d) { return { name: file.name, data: d }; });
+  return new Promise(function (res, rej) {
+    var u = URL.createObjectURL(file), im = new Image();
+    im.onload = function () {
+      var k = Math.min(1, 2600 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+      c.toBlob(function (b) {
+        if (!b) return rej(new Error('Gagal memproses gambar'));
+        if (b.size > MAXB) return rej(new Error('Gambar terlalu besar (maks. 8 MB)'));
+        fileB64(b).then(function (d) { res({ name: file.name.replace(/\.\w+$/, '') + '.jpg', data: d }); }, rej);
+      }, 'image/jpeg', 0.9);
+    };
+    im.onerror = function () { URL.revokeObjectURL(u); rej(new Error('File bukan gambar yang valid')); };
+    im.src = u;
+  });
+}
+function upRad(e) {
+  e.preventDefault();
+  var f = q('rd_fi').files[0]; if (!f) { toast('Pilih gambar terlebih dahulu'); return false; }
+  var p = patientOf(cp);
+  if (!confirm('Unggah hasil radiologi untuk ' + (p ? p.name + ' (' + p.rm + ')' : cp) + '?')) return false;
+  return act(function () {
+    return prepImage(f).then(function (img) {
+      return POST('/patients/' + encodeURIComponent(cp) + '/radiology', { modality: q('rd_md').value, title: val('rd_ti'), examinedAt: val('rd_dt'), findings: val('rd_fd'), impression: val('rd_im'), image: img });
+    }).then(render);
+  }, 'Hasil radiologi tersimpan').then(function () { return false; });
+}
+/** Pilihan hasil radiologi yang ikut ke resume (dicentang dokter). */
+function radPick(list, sel, pre) {
+  if (!list.length) return '<p class="tag">Belum ada hasil radiologi untuk pasien ini (diunggah oleh dokter spesialis radiologi).</p>';
+  return '<fieldset style="border:1px solid var(--bd);border-radius:8px;margin-top:.7rem"><legend style="font-size:.85rem;color:var(--mu)">Hasil radiologi yang dimasukkan ke resume</legend>' +
+    list.map(function (r) {
+      return '<label style="display:flex;gap:.5rem;align-items:center;color:var(--tx);margin:.3rem 0"><input type="checkbox" style="width:auto" class="rp_' + pre + '" value="' + r.id + '"' + (sel.indexOf(r.id) >= 0 ? ' checked' : '') + '> ' +
+        HQ.fmtD(r.examinedAt) + ' · ' + esc(r.modality) + ' — ' + esc(r.title) + '</label>';
+    }).join('') + '</fieldset>';
+}
+
 /* ================= 6. Resume medis dan rujukan ================= */
 var SUMF = [['ringkasanRiwayat', 'Ringkasan riwayat perawatan'], ['kondisiSaatPulang', 'Kondisi saat pulang'], ['diagnosisAkhir', 'Diagnosis akhir'],
   ['terapiLanjutan', 'Terapi lanjutan'], ['rekomendasi', 'Rekomendasi'], ['instruksiPemantauan', 'Instruksi pemantauan'], ['jadwalKontrol', 'Jadwal kontrol']];
@@ -434,27 +549,35 @@ function sumBadge(s) { var x = STX[s.status] || ['', s.status]; return '<span cl
 function sumFields(c, pre) {
   return SUMF.map(function (f) { return '<label for="' + pre + f[0] + '">' + f[1] + '</label><textarea id="' + pre + f[0] + '">' + esc((c && c[f[0]]) || '') + '</textarea>'; }).join('');
 }
-function readSumFields(pre) { var c = {}; SUMF.forEach(function (f) { var v = val(pre + f[0]); if (v) c[f[0]] = v; }); return c; }
+function readSumFields(pre) {
+  var c = {}; SUMF.forEach(function (f) { var v = val(pre + f[0]); if (v) c[f[0]] = v; });
+  c.radiologiIds = Array.prototype.map.call(document.querySelectorAll('.rp_' + pre + ':checked'), function (x) { return Number(x.value); });
+  return c;
+}
 
 function rujuk() {
   if (!cp) return noPatient();
   var base = '/patients/' + encodeURIComponent(cp);
-  return GET(base + '/summaries').then(function (list) {
+  return Promise.all([GET(base + '/summaries'), GET(base + '/radiology')]).then(function (rr) {
+    var list = rr[0], rl = rr[1];
     var want = tab.sumId && list.some(function (s) { return s.id === tab.sumId; }) ? GET('/summaries/' + tab.sumId) : Promise.resolve(null);
     return want.then(function (d) {
       var rows = list.map(function (s) {
         return '<tr' + (d && d.id === s.id ? ' class="sel"' : '') + '><td>' + esc(s.title) + '</td><td>' + esc(s.type) + '</td><td>' + sumBadge(s) + '</td><td>' + esc(s.authorName) + '</td><td>' + HQ.fmtD(s.createdAt) + '</td><td><button class="btn s" onclick="openSum(' + s.id + ')">Lihat</button></td></tr>';
       }).join('') || '<tr><td colspan="6">Belum ada resume untuk pasien ini.</td></tr>';
       var create = isDok() ? '<details class="card"><summary>➕ Buat resume baru</summary><form onsubmit="return newSum(event)"><div class="grid"><div><label for="rs_ty">Jenis</label><select id="rs_ty"><option value="pulang">Resume pulang</option><option value="rujukan">Rujukan</option><option value="kontrol">Kontrol</option></select></div><div><label for="rs_ti">Judul (opsional)</label><input id="rs_ti" maxlength="200"></div></div>' +
-        sumFields(null, 'rs_') + '<p class="tag">Ringkasan otomatis (CPPT terbaru, obat, lab terbaru, monitoring 7 hari) ditambahkan oleh server.</p><button class="btn" style="margin-top:.6rem">Simpan sebagai draft</button></form></details>'
+        sumFields(null, 'rs_') + radPick(rl, [], 'rs_') + '<p class="tag">Ringkasan otomatis (CPPT terbaru, obat, lab terbaru, monitoring 7 hari) ditambahkan oleh server.</p><button class="btn" style="margin-top:.6rem">Simpan sebagai draft</button></form></details>'
         : '<div class="card ro">Resume dibuat oleh dokter. Anda dapat melihat dan mengirim resume yang sudah final.</div>';
-      return '<h2>Resume Medis dan Rujukan</h2>' + pbar() + '<div class="card tbl"><table><tr><th>Judul</th><th>Jenis</th><th>Status</th><th>Penulis</th><th>Dibuat</th><th></th></tr>' + rows + '</table></div>' + create + (d ? sumDetail(d) : '');
+      return '<h2>Resume Medis dan Rujukan</h2>' + pbar() + '<div class="card tbl"><table><tr><th>Judul</th><th>Jenis</th><th>Status</th><th>Penulis</th><th>Dibuat</th><th></th></tr>' + rows + '</table></div>' + create + (d ? sumDetail(d, rl) : '');
     });
   });
 }
-function sumDetail(d) {
+function sumDetail(d, rl) {
   var c = d.content || {}, s = d.snapshot || {};
   var fields = SUMF.filter(function (f) { return c[f[0]]; }).map(function (f) { return '<p><b>' + f[1] + ':</b><br>' + esc(c[f[0]]).replace(/\n/g, '<br>') + '</p>'; }).join('') || '<p><small>Isi resume belum diisi.</small></p>';
+  var rad = (s.radiology || []).length
+    ? '<h3 style="margin-top:.9rem">Hasil radiologi</h3>' + s.radiology.map(function (r) { return '<div class="rcard">' + radBody(r) + '</div>'; }).join('')
+    : '';
   var snap = '';
   if (s.patient) {
     snap = '<details><summary>Ringkasan otomatis dari data pasien (' + HQ.fmtDT(s.generatedAt) + ')</summary>' +
@@ -466,7 +589,7 @@ function sumDetail(d) {
   }
   var act1 = '';
   if (d.status === 'draft' && isDok()) {
-    act1 = '<details><summary>✏️ Ubah isi draft</summary><form onsubmit="return editSum(event,' + d.id + ')"><label for="ed_ti">Judul</label><input id="ed_ti" value="' + esc(d.title) + '">' + sumFields(c, 'ed_') +
+    act1 = '<details><summary>✏️ Ubah isi draft</summary><form onsubmit="return editSum(event,' + d.id + ')"><label for="ed_ti">Judul</label><input id="ed_ti" value="' + esc(d.title) + '">' + sumFields(c, 'ed_') + radPick(rl || [], c.radiologiIds || [], 'ed_') +
       '<label class="row" style="align-items:center;margin-top:.6rem"><input type="checkbox" id="ed_rf" style="width:auto"> Perbarui ringkasan otomatis dari data terbaru</label><button class="btn" style="margin-top:.6rem">Simpan perubahan</button></form></details>' +
       '<button class="btn" style="margin-top:.6rem" onclick="finSum(' + d.id + ')">Finalisasi resume</button> <small>Setelah final, isi dibekukan dan tidak bisa diubah.</small>';
   } else if (d.status === 'draft') {
@@ -475,7 +598,7 @@ function sumDetail(d) {
     act1 = (d.status === 'sent' ? '<p><span class="bd g">Terkirim</span> ke <b>' + esc(d.sentTo) + '</b> pada ' + HQ.fmtDT(d.sentAt) + '. Kirim lagi ke fasilitas lain:</p>' : '<p>Kirim resume ke fasilitas penerima (tercatat sebagai handover di grup tim pasien):</p>') +
       '<form onsubmit="return sendSum(event,' + d.id + ')" class="row" style="flex-wrap:wrap"><input id="sd_fa" required placeholder="Fasilitas tujuan, mis. Puskesmas Wilayah" style="flex:2;min-width:200px"><input id="sd_nt" placeholder="Catatan (opsional)" style="flex:2;min-width:160px"><button class="btn">Kirim</button></form>';
   }
-  return '<div class="card"><h3>' + esc(d.title) + ' ' + sumBadge(d) + '</h3><small style="color:var(--mu)">' + esc(d.authorName) + ' · ' + HQ.fmtDT(d.createdAt) + (d.finalizedAt ? ' · final ' + HQ.fmtDT(d.finalizedAt) : '') + '</small>' + fields + snap + '<div style="margin-top:.8rem">' + act1 + '</div></div>';
+  return '<div class="card"><h3>' + esc(d.title) + ' ' + sumBadge(d) + '</h3><small style="color:var(--mu)">' + esc(d.authorName) + ' · ' + HQ.fmtDT(d.createdAt) + (d.finalizedAt ? ' · final ' + HQ.fmtDT(d.finalizedAt) : '') + '</small>' + fields + rad + snap + '<div style="margin-top:.8rem">' + act1 + '</div></div>';
 }
 function openSum(id) { tab.sumId = id; render(); }
 function newSum(e) {
@@ -512,7 +635,18 @@ function msgHtml(m) {
   if (qna && m.from === 'nakes') tick = '<span class="tick' + (m.readAt ? ' rd' : '') + '">' + (m.readAt ? '✓✓ Dibaca pasien' : '✓ Terkirim') + '</span>';
   else if (!qna && live.dm && m.senderId === me.id) tick = '<span class="tick' + (live.peerRead >= m.id ? ' rd' : '') + '">' + (live.peerRead >= m.id ? '✓✓ Dibaca' : '✓ Terkirim') + '</span>';
   return (m.id === live.divId ? '<div class="newline" role="separator">Pesan belum dibaca</div>' : '') +
-    '<div class="m ' + (mine ? 'me' : '') + (unr ? ' unr' : '') + (m.urgent || (m.meta && m.meta.urgency === 'segera') ? ' urg' : '') + '" style="white-space:pre-wrap"><small>' + esc(who) + ' · ' + HQ.fmtDT(m.createdAt) + (m.urgent ? ' · MENDESAK' : '') + (unr ? ' · BARU' : '') + '</small>' + kind + esc(m.body) + tick + '</div>';
+    '<div class="m ' + (mine ? 'me' : '') + (unr && !m.deleted ? ' unr' : '') + (!m.deleted && (m.urgent || (m.meta && m.meta.urgency === 'segera')) ? ' urg' : '') + (m.deleted ? ' gone' : '') + '" style="white-space:pre-wrap"><small>' + esc(who) + ' · ' + HQ.fmtDT(m.createdAt) + (m.urgent && !m.deleted ? ' · MENDESAK' : '') + (unr && !m.deleted ? ' · BARU' : '') + '</small>' +
+    (m.deleted ? '<i>🚫 Pesan ini telah dihapus</i>' : kind + esc(m.body) + (mine && (qna || m.kind === 'text') ? '<button class="mdel" onclick="delMsg(' + m.id + ')" title="Hapus pesan" aria-label="Hapus pesan">🗑 Hapus</button>' : '') + tick) + '</div>';
+}
+/** Hapus pesan milik sendiri (hilang untuk semua orang di percakapan; konsultasi & handover tidak bisa dihapus). */
+function delMsg(id) {
+  if (!confirm('Hapus pesan ini? Pesan akan hilang untuk semua orang di percakapan ini.')) return;
+  var path = live.kind === 'qna' ? '/qna/' + encodeURIComponent(live.qnaRm) + '/messages/' + id : '/team/rooms/' + live.roomId + '/messages/' + id;
+  HQ.api(path, { method: 'DELETE' }).then(function () { markDeleted(id); }).catch(function (e) { toast(e.message); });
+}
+function markDeleted(id) {
+  live.msgs.forEach(function (m) { if (m.id === id) { m.deleted = true; m.body = ''; m.meta = null; m.urgent = false; } });
+  drawMsgs(); refreshUnread();
 }
 function drawMsgs(force) {
   var m = q('ms'); if (!m) return;

@@ -1,4 +1,4 @@
-import { db, listNakesIds } from '../db/index.js';
+import { db, listNakesIds, audit } from '../db/index.js';
 import { HttpError, parseJSON } from '../util.js';
 import { emit, joinUserToRoom, leaveUserFromRoom } from '../socket/emitter.js';
 import { notifyUser } from './notify.js';
@@ -10,8 +10,9 @@ const fmtMsg = (r) => ({
   senderName: r.sender_name,
   senderProfession: r.sender_profession,
   kind: r.kind,
-  body: r.body,
-  meta: parseJSON(r.meta, null),
+  body: r.deleted_at ? '' : r.body,
+  deleted: !!r.deleted_at,
+  meta: r.deleted_at ? null : parseJSON(r.meta, null),
   createdAt: r.created_at,
 });
 
@@ -83,8 +84,8 @@ export function createGroup({ name, creator, userIds }) {
 export function listRooms(userId) {
   return db.prepare(`
     SELECT r.*, p.rm AS patient_rm, tm.last_read_id,
-      (SELECT COUNT(*) FROM team_messages m WHERE m.room_id = r.id AND m.id > tm.last_read_id AND m.sender_id != ?) AS unread,
-      (SELECT body FROM team_messages WHERE room_id = r.id ORDER BY id DESC LIMIT 1) AS last_body,
+      (SELECT COUNT(*) FROM team_messages m WHERE m.room_id = r.id AND m.id > tm.last_read_id AND m.sender_id != ? AND m.deleted_at IS NULL) AS unread,
+      (SELECT CASE WHEN deleted_at IS NOT NULL THEN 'Pesan ini telah dihapus' ELSE body END FROM team_messages WHERE room_id = r.id ORDER BY id DESC LIMIT 1) AS last_body,
       (SELECT created_at FROM team_messages WHERE room_id = r.id ORDER BY id DESC LIMIT 1) AS last_at
     FROM team_rooms r
     JOIN team_members tm ON tm.room_id = r.id AND tm.user_id = ?
@@ -138,6 +139,25 @@ export function sendTeamMessage({ roomId, user, body, kind = 'text', meta = null
       }));
   }
   return msg;
+}
+
+/**
+ * Hapus pesan milik sendiri (soft delete). Hanya pesan teks biasa: konsultasi & handover adalah komunikasi klinis
+ * yang harus tetap tercatat, jadi tidak bisa dihapus.
+ */
+export function deleteTeamMessage({ roomId, user, id }) {
+  assertMember(roomId, user.id);
+  const row = db.prepare('SELECT * FROM team_messages WHERE id = ? AND room_id = ?').get(id, roomId);
+  if (!row) throw new HttpError(404, 'Pesan tidak ditemukan');
+  if (row.sender_id !== user.id) throw new HttpError(403, 'Hanya bisa menghapus pesan milik sendiri');
+  if (row.kind !== 'text') throw new HttpError(400, 'Konsultasi dan handover tidak bisa dihapus karena bagian dari catatan klinis');
+  if (!row.deleted_at) {
+    db.prepare("UPDATE team_messages SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(id);
+    const room = db.prepare('SELECT patient_id FROM team_rooms WHERE id = ?').get(roomId);
+    audit(user.id, 'team.delete', room?.patient_id ?? null, `room:${roomId} message:${id}`);
+  }
+  emit(`team:${roomId}`, 'team:deleted', { roomId, id });
+  return { id, deleted: true };
 }
 
 export function markTeamRead(roomId, userId) {

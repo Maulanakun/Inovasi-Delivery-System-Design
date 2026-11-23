@@ -1,4 +1,5 @@
-import { db } from '../db/index.js';
+import { db, audit } from '../db/index.js';
+import { HttpError } from '../util.js';
 import { emit } from '../socket/emitter.js';
 import { notifyNakes, notifyUser } from './notify.js';
 
@@ -16,8 +17,9 @@ export const fmtQna = (r) => ({
   from: r.sender_role, // 'pasien' | 'nakes'
   senderId: r.sender_id,
   senderName: r.sender_name,
-  body: r.body,
-  urgent: !!r.urgent,
+  body: r.deleted_at ? '' : r.body,
+  deleted: !!r.deleted_at,
+  urgent: !r.deleted_at && !!r.urgent,
   createdAt: r.created_at,
   readAt: r.read_at,
 });
@@ -54,6 +56,20 @@ export function listQna({ patient, before, limit = 50 }) {
   return rows.reverse().map(fmtQna);
 }
 
+/** Hapus pesan milik sendiri (soft delete: isi disembunyikan dari semua pihak, jejak tetap ada di audit_log). */
+export function deleteQna({ patient, user, id }) {
+  const row = db.prepare('SELECT * FROM qna_messages WHERE id = ? AND patient_id = ?').get(id, patient.id);
+  if (!row) throw new HttpError(404, 'Pesan tidak ditemukan');
+  if (row.sender_id !== user.id) throw new HttpError(403, 'Hanya bisa menghapus pesan milik sendiri');
+  if (!row.deleted_at) {
+    db.prepare("UPDATE qna_messages SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(id);
+    audit(user.id, 'qna.delete', patient.id, `message:${id}`);
+  }
+  emit(`qna:${patient.rm}`, 'qna:deleted', { id, rm: patient.rm });
+  if (user.role === 'pasien') emit('nakes', 'qna:deleted', { id, rm: patient.rm });
+  return { id, deleted: true };
+}
+
 /** Tandai pesan dari pihak lawan sebagai terbaca. */
 export function markQnaRead({ patient, reader }) {
   const otherRole = reader.role === 'pasien' ? 'nakes' : 'pasien';
@@ -69,10 +85,10 @@ export function markQnaRead({ patient, reader }) {
 export function listConversations() {
   return db.prepare(`
     SELECT p.rm, p.name AS patient_name, p.zona,
-      (SELECT body FROM qna_messages WHERE patient_id = p.id ORDER BY id DESC LIMIT 1) AS last_body,
+      (SELECT CASE WHEN deleted_at IS NOT NULL THEN 'Pesan ini telah dihapus' ELSE body END FROM qna_messages WHERE patient_id = p.id ORDER BY id DESC LIMIT 1) AS last_body,
       (SELECT created_at FROM qna_messages WHERE patient_id = p.id ORDER BY id DESC LIMIT 1) AS last_at,
-      (SELECT COUNT(*) FROM qna_messages WHERE patient_id = p.id AND sender_role='pasien' AND read_at IS NULL) AS unread,
-      (SELECT COUNT(*) FROM qna_messages WHERE patient_id = p.id AND sender_role='pasien' AND read_at IS NULL AND urgent=1) AS urgent_unread
+      (SELECT COUNT(*) FROM qna_messages WHERE patient_id = p.id AND sender_role='pasien' AND read_at IS NULL AND deleted_at IS NULL) AS unread,
+      (SELECT COUNT(*) FROM qna_messages WHERE patient_id = p.id AND sender_role='pasien' AND read_at IS NULL AND urgent=1 AND deleted_at IS NULL) AS urgent_unread
     FROM patients p
     ORDER BY urgent_unread DESC, (last_at IS NULL), last_at DESC`).all()
     .map((r) => ({

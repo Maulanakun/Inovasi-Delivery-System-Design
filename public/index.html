@@ -25,8 +25,8 @@ body{margin:0;background:linear-gradient(160deg,var(--lt),var(--bg));color:var(-
 h2{font-size:1.1rem;margin:.3rem 0 .2rem}
 p.note{color:var(--mu);font-size:.85rem;margin:0 0 .4rem}
 label{display:block;font-size:.85rem;color:var(--mu);margin:.7rem 0 .2rem}
-input{width:100%;padding:.65rem .75rem;border:1px solid var(--bd);border-radius:10px;background:var(--sf);color:var(--tx);font:inherit}
-input:focus-visible,button:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+input,select{width:100%;padding:.65rem .75rem;border:1px solid var(--bd);border-radius:10px;background:var(--sf);color:var(--tx);font:inherit}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
 .chk{display:flex;align-items:center;gap:.5rem;margin:.6rem 0 0;font-size:.85rem;color:var(--mu)}
 .chk input{width:auto}
 .go{width:100%;margin-top:1rem;background:var(--pr);color:var(--sf);border:0;border-radius:10px;padding:.75rem;font:inherit;font-weight:700;cursor:pointer}
@@ -91,9 +91,14 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--ac);outline-off
 
   <!-- ===== NAKES: email ===== -->
   <section id="p-nakes" role="tabpanel" aria-labelledby="t-nakes" hidden>
+    <div class="sub" role="tablist" aria-label="Tenaga kesehatan">
+      <button role="tab" id="ns-masuk" aria-selected="true">Masuk</button>
+      <button role="tab" id="ns-daftar" aria-selected="false">Daftar akun nakes</button>
+    </div>
+
     <form id="f-nakes" novalidate>
       <h2>Portal Tenaga Kesehatan</h2>
-      <p class="note">Masuk dengan email yang didaftarkan oleh fasilitas Anda.</p>
+      <p class="note">Masuk dengan email yang Anda daftarkan.</p>
       <label for="n-em">Email</label>
       <input id="n-em" name="email" type="email" autocomplete="username" placeholder="nama@fasilitas.id" required>
       <label for="n-pw">Kata sandi</label>
@@ -102,12 +107,40 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--ac);outline-off
       <div class="msg" id="n-msg" role="alert"></div>
       <button class="go" type="submit">Masuk</button>
     </form>
+
+    <form id="f-nakes-daftar" novalidate hidden>
+      <h2>Daftar akun tenaga kesehatan</h2>
+      <p class="note">Gunakan kode pendaftaran dari admin fasilitas Anda.</p>
+      <label for="nd-nm">Nama lengkap (beserta gelar)</label>
+      <input id="nd-nm" name="name" autocomplete="name" placeholder="contoh dr. Rina Wulandari, Sp.JP" maxlength="120" required>
+      <label for="nd-pf">Profesi</label>
+      <select id="nd-pf" name="profession" required>
+        <option value="">Pilih profesi…</option>
+        <option>Dokter spesialis</option><option>Dokter spesialis radiologi</option><option>Dokter umum</option><option>Perawat</option>
+        <option>Perawat case manager</option><option>Apoteker</option><option>Ahli gizi</option>
+        <option>Fisioterapis</option><option>Tenaga kesehatan lainnya</option>
+      </select>
+      <label for="nd-fa">Fasilitas / unit kerja</label>
+      <input id="nd-fa" name="facility" autocomplete="organization" placeholder="contoh RS Kota Malang — Poli Jantung" maxlength="150" required>
+      <label for="nd-em">Email</label>
+      <input id="nd-em" name="email" type="email" autocomplete="email" placeholder="nama@fasilitas.id" required>
+      <label for="nd-pw">Kata sandi (minimal 8 karakter)</label>
+      <input id="nd-pw" name="password" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="nd-pw2">Ulangi kata sandi</label>
+      <input id="nd-pw2" type="password" autocomplete="new-password" required>
+      <label class="chk"><input type="checkbox" data-show="nd-pw,nd-pw2"> Tampilkan kata sandi</label>
+      <label for="nd-cd">Kode pendaftaran fasilitas</label>
+      <input id="nd-cd" name="code" autocomplete="off" required>
+      <div class="msg" id="nd-msg" role="alert"></div>
+      <button class="go" type="submit">Buat akun dan masuk</button>
+    </form>
   </section>
 
   <div class="hint" id="hint">
     <b>Akun demo</b> (muncul hanya di mode pengembangan, kata sandi semua akun <b>demo123</b>):<br>
     Pasien: RM <b>12-34-56</b> (Tn. Budi). Buat akun baru: RM <b>12-34-78</b> lahir <b>02-03-1954</b>.<br>
-    Nakes: <b>dr.rina@hfcare.demo</b> (dokter), <b>ns.dewi@hfcare.demo</b> (perawat), <b>apt.dinda@hfcare.demo</b> (apoteker).
+    Nakes: <b>dr.rina@hfcare.demo</b> (dokter), <b>ns.dewi@hfcare.demo</b> (perawat), <b>apt.dinda@hfcare.demo</b> (apoteker).<br>
+    Daftar nakes baru: kode pendaftaran <b>HATIQU-NAKES</b>.
   </div>
   <p class="fine">Data medis dilindungi. Jangan bagikan kata sandi Anda.</p>
 </main>
@@ -141,6 +174,15 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--ac);outline-off
   }
   $('#s-masuk').onclick = function () { sub('masuk'); };
   $('#s-daftar').onclick = function () { sub('daftar'); };
+
+  function subN(which) {
+    var m = which === 'masuk';
+    $('#ns-masuk').setAttribute('aria-selected', m); $('#ns-daftar').setAttribute('aria-selected', !m);
+    $('#f-nakes').hidden = !m; $('#f-nakes-daftar').hidden = m;
+    (m ? $('#n-em') : $('#nd-nm')).focus();
+  }
+  $('#ns-masuk').onclick = function () { subN('masuk'); };
+  $('#ns-daftar').onclick = function () { subN('daftar'); };
 
   /* tampilkan kata sandi */
   document.querySelectorAll('[data-show]').forEach(function (c) {
@@ -180,6 +222,19 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--ac);outline-off
     HQ.api('/auth/login', { method: 'POST', anon: true, body: { email: em, password: pw } })
       .then(function (r) { done(r, '/nakes.html'); })
       .catch(function (er) { msg('#n-msg', er.status === 400 ? 'Format email tidak valid.' : er.message); busy(e.target, false); });
+  };
+
+  $('#f-nakes-daftar').onsubmit = function (e) {
+    e.preventDefault();
+    var b = { name: $('#nd-nm').value.trim(), profession: $('#nd-pf').value, facility: $('#nd-fa').value.trim(),
+      email: $('#nd-em').value.trim(), password: $('#nd-pw').value, code: $('#nd-cd').value.trim() };
+    if (!b.name || !b.profession || !b.facility || !b.email || !b.code) return msg('#nd-msg', 'Lengkapi semua isian.');
+    if (b.password.length < 8) return msg('#nd-msg', 'Kata sandi minimal 8 karakter.');
+    if (b.password !== $('#nd-pw2').value) return msg('#nd-msg', 'Kata sandi dan pengulangannya tidak sama.');
+    msg('#nd-msg', ''); busy(e.target, true);
+    HQ.api('/auth/register-nakes', { method: 'POST', anon: true, body: b })
+      .then(function (r) { msg('#nd-msg', 'Akun dibuat. Mengalihkan…', true); done(r, '/nakes.html'); })
+      .catch(function (er) { msg('#nd-msg', er.message); busy(e.target, false); });
   };
 
   $('#f-daftar').onsubmit = function (e) {

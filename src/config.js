@@ -15,6 +15,8 @@ export const config = {
   jwtSecret,
   jwtTtl: process.env.JWT_TTL || '12h',
   corsOrigins: origins,
+  // Kode pendaftaran nakes (dibagikan fasilitas ke stafnya). Production: wajib diisi, kalau kosong pendaftaran nakes ditutup.
+  nakesRegCode: process.env.NAKES_REGISTRATION_CODE || (prod ? '' : 'HATIQU-NAKES'),
   dbPath: process.env.DB_PATH || './data/hatiqu.db',
   livekit: {
     url: process.env.LIVEKIT_URL || '',

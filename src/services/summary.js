@@ -3,6 +3,7 @@ import { HttpError, parseJSON } from '../util.js';
 import { notifyNakes } from './notify.js';
 import { ensurePatientRoom, sendTeamMessage } from './team.js';
 import { listLogs } from './monitoring.js';
+import { buildRadiologySnapshot } from './radiology.js';
 
 const fmtCppt = (r) => ({
   id: r.id, author: r.author, profession: r.profession, facility: r.facility,
@@ -27,7 +28,7 @@ export const listLabs = (patientId) =>
     .map((r) => ({ id: r.id, testedAt: r.tested_at, name: r.name, value: r.value, range: r.ref_range, flag: r.flag }));
 
 /** Ringkasan otomatis dari data yang sudah ada: CPPT, obat, lab terbaru, monitoring 7 hari. */
-export function buildSnapshot(patient) {
+export function buildSnapshot(patient, content = null) {
   const latestLabs = db.prepare(`SELECT * FROM lab_results WHERE patient_id = ?
     AND id IN (SELECT MAX(id) FROM lab_results WHERE patient_id = ? GROUP BY name)
     ORDER BY tested_at DESC`).all(patient.id, patient.id)
@@ -41,6 +42,8 @@ export function buildSnapshot(patient) {
     recentCppt: listCppt(patient.id, 5),
     medications: listMeds(patient.id),
     latestLabs,
+    // hasil radiologi yang dipilih dokter (content.radiologiIds); teks dibekukan bersama snapshot, gambar dirujuk lewat id
+    radiology: buildRadiologySnapshot(patient.id, content?.radiologiIds),
     monitoring7d: listLogs({ patient, days: 7 }).map((l) => ({
       date: l.date, weight: l.weight, weightDelta: l.weightDelta, zona: l.zona, reasons: l.reasons,
     })),
@@ -72,7 +75,7 @@ export function listSummaries({ patient, onlyReleased = false }) {
 }
 
 export function createSummary({ patient, author, type, title, content }) {
-  const snapshot = buildSnapshot(patient);
+  const snapshot = buildSnapshot(patient, content);
   const info = db.prepare(`INSERT INTO medical_summaries(patient_id, type, title, content, snapshot, author_id)
     VALUES (?,?,?,?,?,?)`).run(
     patient.id, type, title ?? `Resume medis ${patient.name}`, JSON.stringify(content ?? {}), JSON.stringify(snapshot), author.id);
@@ -89,11 +92,14 @@ function mustDraft(id) {
 export function updateDraft({ id, title, content, refreshSnapshot }) {
   const s = mustDraft(id);
   const patient = getPatientById(db.prepare('SELECT patient_id FROM medical_summaries WHERE id = ?').get(id).patient_id);
+  const newContent = content ?? s.content;
   db.prepare(`UPDATE medical_summaries SET title = ?, content = ?, snapshot = ?,
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`).run(
     title ?? s.title,
-    JSON.stringify(content ?? s.content),
-    JSON.stringify(refreshSnapshot ? buildSnapshot(patient) : s.snapshot),
+    JSON.stringify(newContent),
+    JSON.stringify(refreshSnapshot
+      ? buildSnapshot(patient, newContent)
+      : { ...(s.snapshot ?? {}), radiology: buildRadiologySnapshot(patient.id, newContent.radiologiIds) }),
     id);
   return getSummary(id);
 }
@@ -103,7 +109,7 @@ export function finalizeSummary({ id }) {
   const s = mustDraft(id);
   const patient = getPatientById(db.prepare('SELECT patient_id FROM medical_summaries WHERE id = ?').get(id).patient_id);
   db.prepare(`UPDATE medical_summaries SET status='final', snapshot=?, finalized_at=?, updated_at=? WHERE id=?`)
-    .run(JSON.stringify(buildSnapshot(patient)), new Date().toISOString(), new Date().toISOString(), s.id);
+    .run(JSON.stringify(buildSnapshot(patient, s.content)), new Date().toISOString(), new Date().toISOString(), s.id);
   return getSummary(id);
 }
 

@@ -20,6 +20,7 @@ const contentSchema = z.object({
   rekomendasi: z.string().optional(),
   instruksiPemantauan: z.string().optional(),
   jadwalKontrol: z.string().optional(),
+  radiologiIds: z.array(z.number().int().positive()).max(20).optional(), // hasil radiologi yang dimasukkan ke resume
 }).strict();
 
 /** Pratinjau live (belum disimpan): gabungan CPPT + obat + lab + monitoring 7 hari. */

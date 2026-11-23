@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util.js';
 import { authenticate, requireNakes, patientAccess } from '../middleware/auth.js';
-import { sendQna, listQna, markQnaRead, listConversations } from '../services/qna.js';
+import { sendQna, listQna, markQnaRead, listConversations, deleteQna } from '../services/qna.js';
 
 const r = Router();
 r.use(authenticate);
@@ -23,6 +23,11 @@ r.post('/:rm/messages', patientAccess, asyncHandler(async (req, res) => {
   const { body } = bodySchema.parse(req.body);
   res.status(201).json(sendQna({ patient: req.patient, user: req.user, body }));
 }));
+
+// Hapus pesan milik sendiri (pasien maupun nakes)
+r.delete('/:rm/messages/:id', patientAccess, (req, res) => {
+  res.json(deleteQna({ patient: req.patient, user: req.user, id: Number(req.params.id) }));
+});
 
 r.post('/:rm/read', patientAccess, (req, res) => {
   res.json({ marked: markQnaRead({ patient: req.patient, reader: req.user }) });

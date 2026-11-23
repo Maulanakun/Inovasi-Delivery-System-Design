@@ -13,6 +13,7 @@ import callRoutes, { livekitWebhook } from './routes/calls.js';
 import teamRoutes from './routes/team.js';
 import summaryRoutes from './routes/summaries.js';
 import monitoringRoutes from './routes/monitoring.js';
+import radiologyRoutes from './routes/radiology.js';
 import { livekitConfigured } from './services/livekit.js';
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -54,7 +55,11 @@ export function createApp() {
   // Webhook LiveKit butuh body mentah untuk verifikasi tanda tangan -> sebelum express.json()
   app.post('/api/livekit/webhook', express.raw({ type: '*/*', limit: '1mb' }), livekitWebhook);
 
-  app.use(express.json({ limit: '200kb' }));
+  // Unggah radiologi membawa gambar (base64) sehingga bodynya besar: parser besar dipasang di rute itu sendiri
+  // SETELAH autentikasi & cek peran, bukan di sini (supaya pihak tanpa login tidak bisa mengirim body besar).
+  const smallJson = express.json({ limit: '200kb' });
+  app.use((req, res, next) =>
+    req.method === 'POST' && /^\/api\/patients\/[^/]+\/radiology\/?$/.test(req.path) ? next() : smallJson(req, res, next));
 
   app.get('/health', (_req, res) => res.json({ ok: true, livekit: livekitConfigured, demo: !config.prod }));
 
@@ -68,6 +73,7 @@ export function createApp() {
   app.use('/api/qna', qnaRoutes);             // 1. Q&A chat pasien/nakes
   app.use('/api/calls', callRoutes);          // 2. video/telepon (LiveKit)
   app.use('/api/team', teamRoutes);           // 3. chat multidisiplin
+  app.use('/api', radiologyRoutes);           // radiologi (unggah gambar oleh dokter spesialis radiologi)
   app.use('/api', summaryRoutes);             // 4. resume medis
   app.use('/api/monitoring', monitoringRoutes); // 5. monitoring
 

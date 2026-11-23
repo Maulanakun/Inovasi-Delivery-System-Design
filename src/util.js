@@ -25,4 +25,5 @@ export const parseJSON = (s, fallback) => {
 };
 
 export const isDoctor = (u) => u?.role === 'nakes' && /^Dokter/i.test(u.profession || '');
+export const isRadiologist = (u) => u?.role === 'nakes' && /^Dokter/i.test(u.profession || '') && /radiolog/i.test(u.profession || '');
 export const isPharmacist = (u) => u?.role === 'nakes' && u.profession === 'Apoteker';
