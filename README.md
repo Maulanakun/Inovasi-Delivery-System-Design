@@ -36,6 +36,7 @@ Coba *Buat akun baru*: RM `12-34-78` + lahir `2 Mar 1954`, atau RM `12-35-01` + 
 ### Frontend terhubung ke backend
 Pasien: Catatan Gejala → `POST /api/monitoring/:rm/logs` (zona dihitung server) · TEMU chat → `/api/qna` + Socket.IO · video/telepon → `/api/calls` (LiveKit) · Hasil Lab, Status Resep, Resume Medis, Info Pengguna → data server.
 Nakes: semua halaman memakai REST + Socket.IO. Menu pasien yang belum punya backend (pendaftaran online, antrian, home care, jadwal K2/K3, kode akses TEMU, dll.) masih prototipe lokal; menu berisi contoh hanya tampil untuk RM 12-34-56.
+Pesan masuk: **titik merah + angka di nama** pada daftar chat (pasien dan antar nakes; yang belum dibaca di urutan atas), badge angka di menu/tab, judul tab browser `(n)`, garis **“Pesan belum dibaca”** + label BARU saat chat dibuka, dan centang **✓ Terkirim / ✓✓ Dibaca** (Q&A pasien–nakes dan chat langsung antar nakes). Pesan baru yang masuk saat tab browser tidak aktif tetap berstatus belum dibaca sampai tab dibuka lagi.
 Kamera/mikrofon butuh **HTTPS** (kecuali `localhost`). `livekit-client` dimuat dari jsDelivr (versi dipin di `public/js/common.js`, bisa diganti lewat `window.HATIQU_LIVEKIT_SRC`).
 
 ### LiveKit

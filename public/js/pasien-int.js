@@ -9,7 +9,42 @@
   var DEMO_RM = '12-34-56';
   var GET = function (p) { return HQ.api(p); };
   var POST = function (p, b) { return HQ.api(p, { method: 'POST', body: b || {} }); };
-  var QNA = { add: null };
+  var QNA = { add: null, read: null };
+  var PTU = 0; // jumlah balasan perawat yang belum dibaca
+
+  /* ---------- penanda pesan belum dibaca (badge menu + banner) ---------- */
+  (function () {
+    var st2 = document.createElement('style');
+    st2.textContent = '.tile,#bn button{position:relative}.ubadge{position:absolute;top:0;right:8px;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--bad,#c53030);color:#fff;font:700 11px/18px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px var(--card,#fff)}' +
+      '#hq-unread{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));width:calc(100% - 24px);max-width:436px;z-index:50;background:var(--pri,#0d3b73);color:#fff;border:0;border-radius:14px;padding:10px 14px;font:600 14px/1.3 system-ui,sans-serif;text-align:left;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer}' +
+      '.nl{display:flex;align-items:center;gap:8px;color:var(--bad,#c53030);font-size:12px;font-weight:700;margin:10px 0}.nl:before,.nl:after{content:"";flex:1;height:1px;background:var(--bad,#c53030)}' +
+      '.bub.unr{outline:2px solid var(--warn,#e0a100)}.tk{display:block;text-align:right;font-size:11px;opacity:.85}.tk.rd{font-weight:700}';
+    document.head.appendChild(st2);
+  })();
+  function putBadge(el) {
+    if (!el) return; var b = el.querySelector('.ubadge');
+    if (!PTU) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('span'); b.className = 'ubadge'; b.setAttribute('aria-label', PTU + ' pesan belum dibaca'); el.appendChild(b); }
+    if (b.textContent !== String(PTU)) b.textContent = PTU;
+  }
+  function paintUnread() {
+    putBadge(document.querySelector('.tile[data-id=temu]')); putBadge(document.querySelector('#bn [data-n=temu]'));
+    var ban = document.getElementById('hq-unread'), chatOpen = !!document.getElementById('qm');
+    if (!PTU || !st.user || chatOpen) { if (ban) ban.remove(); return; }
+    if (!ban) {
+      ban = document.createElement('button'); ban.id = 'hq-unread'; document.body.appendChild(ban);
+      ban.onclick = function () { open('temu'); HQ.room(document.getElementById('p'), null, 'chat', function () { open('temu'); }); };
+    }
+    var t = '💬 ' + PTU + ' pesan baru dari perawat. Ketuk untuk membaca';
+    if (ban.textContent !== t) ban.textContent = t;
+  }
+  var paintT = null;
+  new MutationObserver(function () { clearTimeout(paintT); paintT = setTimeout(paintUnread, 30); }).observe(document.body, { childList: true, subtree: true });
+  function refreshUnread() {
+    return GET('/qna/' + enc(PT.rm) + '/messages').then(function (l) {
+      PTU = l.filter(function (x) { return x.from === 'nakes' && !x.readAt; }).length; paintUnread();
+    }).catch(function () {});
+  }
   var LOGS = {};
 
   /* ---------- menu berisi contoh (khusus pasien demo) ---------- */
@@ -179,29 +214,39 @@
   HQ.room = function (p, a, m, back, T, mkSum) {
     var nm = a ? a.n.split(' (')[0] : 'Perawat penghubung';
     function fin() {
-      QNA.add = null;
+      QNA.add = null; QNA.read = null;
       if (a) { a.done = true; a.sum = mkSum(a); if (a.tp === 'B') T.bl.unshift(a); back('Konsultasi selesai. Ringkasannya tersimpan dan bisa dilihat di Riwayat Layanan. Konsultasi tidak dapat diulang.'); } else back('');
     }
     if (m === 'chat') {
-      var msgs = [];
+      var msgs = [], unr = [], divId = null;
       p.innerHTML = '<h2>Chat dengan tim perawatan</h2><p class="sub">Pesan masuk ke perawat jaga dan dijawab pada jam kerja 07.00–16.00. Bila sesak berat saat istirahat atau nyeri dada, segera ke IGD atau hubungi 119.</p><div id="qm"></div>' +
         '<textarea id="qms" rows="2" maxlength="2000" placeholder="Tulis pesan"></textarea><button class="btn" id="qsd">Kirim</button><button class="btn alt" id="qfn">' + (a ? 'Selesai konsultasi' : 'Kembali') + '</button>';
       var box = document.getElementById('qm');
       var drawM = function () {
         box.innerHTML = msgs.length ? msgs.map(function (x) {
-          var me = x.from === 'pasien';
-          return '<div class="bub ' + (me ? 'me' : 'nu') + '">' + (me ? '' : '<small style="display:block;opacity:.75">' + esc(x.senderName) + '</small>') + esc(x.body) + '<small style="display:block;opacity:.7;font-size:11px">' + HQ.fmtDT(x.createdAt) + '</small></div>';
+          var me = x.from === 'pasien', u = unr.indexOf(x.id) >= 0;
+          return (x.id === divId ? '<div class="nl" role="separator">Pesan belum dibaca</div>' : '') +
+            '<div class="bub ' + (me ? 'me' : 'nu') + (u ? ' unr' : '') + '">' + (me ? '' : '<small style="display:block;opacity:.75">' + esc(x.senderName) + (u ? ' · BARU' : '') + '</small>') + esc(x.body) +
+            '<small style="display:block;opacity:.7;font-size:11px">' + HQ.fmtDT(x.createdAt) + '</small>' + (me ? '<small class="tk' + (x.readAt ? ' rd' : '') + '">' + (x.readAt ? '✓✓ Dibaca perawat' : '✓ Terkirim') + '</small>' : '') + '</div>';
         }).join('') : '<div class="empty">Belum ada pesan.</div>';
         window.scrollTo(0, document.body.scrollHeight);
       };
       QNA.add = function (x) {
         if (!document.getElementById('qm')) { QNA.add = null; return false; }
         if (msgs.some(function (y) { return y.id === x.id; })) return true;
-        msgs.push(x); drawM();
-        if (x.from === 'nakes') POST('/qna/' + enc(PT.rm) + '/read').catch(function () {});
+        if (x.from === 'nakes' && document.hidden) { unr.push(x.id); if (!divId) divId = x.id; }
+        msgs.push(x); drawM(); markRead();
         return true;
       };
-      GET('/qna/' + enc(PT.rm) + '/messages').then(function (l) { msgs = l; drawM(); POST('/qna/' + enc(PT.rm) + '/read').catch(function () {}); }).catch(function (e) { box.innerHTML = '<p class="err">' + esc(e.message) + '</p>'; });
+      QNA.read = function (d) { // perawat sudah membaca pesan kita -> centang dua
+        if (d.by !== 'nakes') return; var t = new Date().toISOString();
+        msgs.forEach(function (y) { if (y.from === 'pasien' && !y.readAt) y.readAt = t; }); drawM();
+      };
+      var markRead = function () { if (document.hidden || !document.getElementById('qm')) return; POST('/qna/' + enc(PT.rm) + '/read').then(function () { PTU = 0; paintUnread(); }).catch(function () {}); };
+      document.addEventListener('visibilitychange', function vis() { if (!document.getElementById('qm')) return document.removeEventListener('visibilitychange', vis); if (!document.hidden) markRead(); });
+      GET('/qna/' + enc(PT.rm) + '/messages').then(function (l) {
+        msgs = l; var u = l.filter(function (y) { return y.from === 'nakes' && !y.readAt; });
+        unr = u.map(function (y) { return y.id; }); divId = u.length ? u[0].id : null; drawM(); markRead(); }).catch(function (e) { box.innerHTML = '<p class="err">' + esc(e.message) + '</p>'; });
       document.getElementById('qsd').onclick = function () {
         var t = document.getElementById('qms'), v2 = t.value.trim(); if (!v2) return; t.value = '';
         POST('/qna/' + enc(PT.rm) + '/messages', { body: v2 }).then(function (x) { QNA.add && QNA.add(x); }).catch(function (e) { HQ.toast(e.message); t.value = v2; });
@@ -228,12 +273,17 @@
     st.user = PT;
     home();
     loadLogs().catch(function () {});
+    refreshUnread();
     return HQ.connect().then(function (sock) {
       HQ.Calls.init(sock);
       sock.on('qna:message', function (x) {
         if (x.from !== 'nakes') { if (QNA.add) QNA.add(x); return; }
-        if (!(QNA.add && QNA.add(x) !== false)) HQ.toast('💬 Balasan dari ' + x.senderName + ': ' + (x.body.length > 50 ? x.body.slice(0, 47) + '…' : x.body));
+        if (QNA.add && QNA.add(x) !== false) return;
+        PTU++; paintUnread();
+        HQ.toast('💬 Balasan dari ' + x.senderName + ': ' + (x.body.length > 50 ? x.body.slice(0, 47) + '…' : x.body));
       });
+      sock.on('qna:read', function (d) { if (QNA.read) QNA.read(d); });
+      sock.on('connect', refreshUnread);
       sock.on('notification', function (n) { if (/Balasan dari/.test(n.text) === false) HQ.toast((n.icon || '🔔') + ' ' + n.text); });
     }).catch(function () { HQ.toast('Koneksi realtime gagal. Pesan baru akan tampil setelah halaman dimuat ulang.'); });
   }).catch(function (e) {

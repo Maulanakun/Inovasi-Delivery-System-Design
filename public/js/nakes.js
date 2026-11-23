@@ -17,6 +17,7 @@ var me = null, pts = [], cp = null, page = 'dash', tab = {}, notes = [], sock = 
 var LOG = [];                                   // log data masuk (realtime)
 var live = { kind: null, roomId: null, qnaRm: null, msgs: [], dmUser: null }; // chat yang sedang dibuka
 var rv = 0, topNext = true, TABS = {};
+var UN = { qna: 0, qnaBy: {}, team: 0, peer: {}, grp: {} }; // pesan belum dibaca
 
 var NAV = [['dash', '🏠', 'Dashboard'], ['pasien', '👤', 'Data Pasien'], ['cppt', '📝', 'CPPT'], ['resep', '💊', 'Resep dan Obat'],
   ['lab', '🧪', 'Lab dan Penunjang'], ['rujuk', '📋', 'Resume dan Rujukan'], ['kom', '💬', 'Komunikasi Tim'], ['mon', '❤️', 'Monitoring'],
@@ -52,11 +53,67 @@ function tabs(k, list) {
   TABS[k] = list;
   if (list.indexOf(tab[k]) < 0) tab[k] = list[0];
   return '<div class="tabs">' + list.map(function (t, i) {
-    return '<button class="' + (tab[k] === t ? 'on' : '') + '" onclick="setTab(\'' + k + '\',' + i + ')">' + esc(t) + '</button>';
+    var n = k === 'kom' ? tabCount(t) : 0;
+    return '<button class="' + (tab[k] === t ? 'on' : '') + '" onclick="setTab(\'' + k + '\',' + i + ')">' + esc(t) + (n ? '<span class="badge-n" aria-label="' + n + ' belum dibaca">' + n + '</span>' : '') + '</button>';
   }).join('') + '</div>';
 }
 function setTab(k, i) { tab[k] = TABS[k][i]; render(); }
 
+function sumObj(o) { return Object.keys(o).reduce(function (a, k) { return a + o[k]; }, 0); }
+function tabCount(t) { return t === K_QNA ? UN.qna : t === K_CHAT ? sumObj(UN.peer) : t === K_GRP ? sumObj(UN.grp) : 0; }
+/** Ambil jumlah pesan belum dibaca (pasien + tim) lalu gambar badge di menu dan judul tab browser. */
+function refreshUnread() {
+  return Promise.all([GET('/qna/conversations'), GET('/team/rooms')]).then(function (r) {
+    var qBy = {}, qs = 0, tm = 0, peer = {}, grp = {};
+    r[0].forEach(function (c) { qBy[c.rm] = c.unread; qs += c.unread; });
+    r[1].forEach(function (x) {
+      if (!x.unread) return;
+      tm += x.unread;
+      if (x.type === 'direct' && x.peerId) peer[x.peerId] = x.unread;
+      if (x.patientRm) grp[x.patientRm] = (grp[x.patientRm] || 0) + x.unread;
+    });
+    UN = { qna: qs, qnaBy: qBy, team: tm, peer: peer, grp: grp };
+    drawBadges();
+  }).catch(function () {});
+}
+function drawBadges() {
+  var total = UN.qna + UN.team, b = $('nav [data-p=kom]');
+  if (b) {
+    var old = b.querySelector('.badge-n'); if (old) old.remove();
+    if (total) { var s = document.createElement('span'); s.className = 'badge-n'; s.textContent = total; s.setAttribute('aria-label', total + ' pesan belum dibaca'); b.appendChild(s); }
+  }
+  document.title = (total ? '(' + total + ') ' : '') + 'HatiQu — Portal Tenaga Kesehatan';
+  document.querySelectorAll('.ct button[data-u]').forEach(function (b) { // titik merah + angka di daftar chat
+    var k = b.dataset.k, u = b.dataset.u;
+    var n = k === 'dm' ? UN.peer[u] : k === 'qna' ? UN.qnaBy[u] : UN.grp[u];
+    n = (!b.classList.contains('on') && n) || 0;
+    b.querySelectorAll('.dot,.badge-n').forEach(function (x) { x.remove(); });
+    b.classList.toggle('unread', !!n);
+    if (!n) return;
+    var name = b.querySelector('b'), d = document.createElement('span'), c = document.createElement('span');
+    d.className = 'dot'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', 'belum dibaca');
+    c.className = 'badge-n'; c.textContent = n;
+    name.insertBefore(d, name.firstChild); b.insertBefore(c, b.firstChild);
+  });
+  if (page === 'kom' && TABS.kom) document.querySelectorAll('.tabs button').forEach(function (btn, i) { // perbarui badge tab di tempat (tanpa render ulang)
+    var n = tabCount(TABS.kom[i]), o = btn.querySelector('.badge-n'); if (o) o.remove();
+    if (n) { var sp = document.createElement('span'); sp.className = 'badge-n'; sp.textContent = n; btn.appendChild(sp); }
+  });
+}
+function markQnaNow() { if (document.hidden || live.kind !== 'qna') return; POST('/qna/' + encodeURIComponent(live.qnaRm) + '/read').then(refreshUnread).catch(function () {}); }
+function markTeamNow() { if (document.hidden || live.kind !== 'team') return; POST('/team/rooms/' + live.roomId + '/read').then(refreshUnread).catch(function () {}); }
+document.addEventListener('visibilitychange', function () { if (!document.hidden && page === 'kom') { markQnaNow(); markTeamNow(); } });
+/** Buka room tim: hitung pesan yang belum dibaca SEBELUM ditandai dibaca, supaya garis pemisah bisa ditampilkan. */
+function openRoom(roomId, isDm) {
+  return Promise.all([GET('/team/rooms/' + roomId + '/messages'), GET('/team/rooms'), isDm ? GET('/team/rooms/' + roomId) : Promise.resolve(null)]).then(function (r) {
+    var msgs = r[0], info = r[1].find(function (x) { return x.id === roomId; }), n = info ? info.unread : 0;
+    live.kind = 'team'; live.roomId = roomId; live.msgs = msgs; live.unrIds = []; live.divId = null; live.dm = !!isDm; live.peerRead = 0;
+    for (var i = msgs.length - 1, c = 0; i >= 0 && c < n; i--) { if (msgs[i].senderId !== me.id) { live.unrIds.push(msgs[i].id); live.divId = msgs[i].id; c++; } }
+    if (r[2]) { var o = r[2].members.find(function (m) { return m.id !== me.id; }); live.peerRead = o ? o.lastReadId || 0 : 0; }
+    markTeamNow();
+    return msgs;
+  });
+}
 function pbar(labelFn) {
   return '<div class="pb"><b>Pasien:</b><select onchange="cp=this.value;render()" aria-label="Pilih pasien">' +
     pts.map(function (p) {
@@ -86,6 +143,7 @@ function act(fn, ok) {
     $('#boot').style.display = 'none';
     $('#app').style.display = 'grid';
     go('dash');
+    refreshUnread();
     return startSocket();
   }).catch(function (e) { $('#boot').textContent = 'Gagal memuat portal: ' + e.message; });
 })();
@@ -104,18 +162,37 @@ function startSocket() {
     });
     sock.on('qna:new', function (d) {
       logEv('Pesan TEMU B', d.patientName + ' (' + d.rm + '): ' + d.preview);
-      if (page === 'dash' || (page === 'kom' && tab.kom === K_QNA && live.qnaRm !== d.rm)) safeRender();
+      refreshUnread();
+      if (page === 'dash') safeRender();
     });
     sock.on('qna:message', function (m) {
-      if (page === 'kom' && tab.kom === K_QNA && live.qnaRm === m.rm) {
-        addMsg(m);
-        if (m.from === 'pasien') POST('/qna/' + encodeURIComponent(m.rm) + '/read').catch(function () {});
+      if (page === 'kom' && tab.kom === K_QNA && live.kind === 'qna' && live.qnaRm === m.rm) {
+        if (m.from === 'pasien') {
+          if (document.hidden) { live.unrIds.push(m.id); if (!live.divId) live.divId = m.id; }
+          addMsg(m); markQnaNow();
+        } else addMsg(m);
       }
+    });
+    sock.on('qna:read', function (d) {
+      if (d.by === 'pasien' && live.kind === 'qna' && live.qnaRm === d.rm) {
+        var t = new Date().toISOString();
+        live.msgs.forEach(function (m) { if (m.from === 'nakes' && !m.readAt) m.readAt = t; });
+        drawMsgs();
+      }
+      if (d.by === 'nakes') refreshUnread();
+    });
+    sock.on('team:read', function (d) {
+      if (live.kind === 'team' && live.dm && live.roomId === d.roomId && d.userId !== me.id) { live.peerRead = Math.max(live.peerRead, d.lastReadId); drawMsgs(); }
     });
     sock.on('team:message', function (m) {
       var open = page === 'kom' && (tab.kom === K_CHAT || tab.kom === K_GRP) && live.kind === 'team' && live.roomId === m.roomId;
-      if (open) { addMsg(m); if (m.senderId !== me.id) POST('/team/rooms/' + m.roomId + '/read').catch(function () {}); }
-      else if (m.senderId !== me.id && m.kind === 'text') {
+      if (open) {
+        if (m.senderId !== me.id && document.hidden) { live.unrIds.push(m.id); if (!live.divId) live.divId = m.id; }
+        addMsg(m); if (m.senderId !== me.id) markTeamNow();
+      } else if (m.senderId !== me.id) {
+        refreshUnread();
+      }
+      if (!open && m.senderId !== me.id && m.kind === 'text') {
         toast('💬 ' + m.senderName + ': ' + (m.body.length > 60 ? m.body.slice(0, 57) + '…' : m.body));
         logEv('Chat tim', m.senderName + ': ' + m.body);
       }
@@ -152,7 +229,8 @@ function drawNt() {
 function go(p) {
   page = p; topNext = true; $('#sb').classList.remove('open');
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.p === p); });
-  if (p !== 'kom') live.kind = null;
+  if (p !== 'kom') { live.kind = null; live.unrIds = []; live.divId = null; }
+  refreshUnread();
   render();
 }
 function render() {
@@ -161,7 +239,7 @@ function render() {
   return Promise.resolve().then(fn).then(function (out) {
     if (v !== rv) return;
     var html = typeof out === 'string' ? out : out.html;
-    pg.innerHTML = html; drawNt();
+    pg.innerHTML = html; drawNt(); drawBadges();
     if (topNext) { pg.scrollTop = 0; topNext = false; }
     if (out && out.after) out.after();
   }).catch(function (e) {
@@ -182,7 +260,7 @@ function dash() {
     var missing = ov.filter(function (x) { return x.missingLog; }).length;
     var sc = function (a, b) { return '<div class="card stat"><b>' + a + '</b><span>' + b + '</span></div>'; };
     var msgs = conv.filter(function (c) { return c.lastMessage; }).slice(0, 5).map(function (c) {
-      return '<div style="padding:.35rem 0;border-bottom:1px solid var(--bd)"><b>' + esc(c.patientName) + '</b>' + (c.unread ? '<span class="badge-n">' + c.unread + '</span>' : '') +
+      return '<div style="padding:.35rem 0;border-bottom:1px solid var(--bd)">' + (c.unread ? '<span class="dot" role="img" aria-label="belum dibaca"></span>' : '') + '<b>' + esc(c.patientName) + '</b>' + (c.unread ? '<span class="badge-n">' + c.unread + '</span>' : '') +
         '<br><small>' + esc(c.lastMessage.length > 70 ? c.lastMessage.slice(0, 67) + '…' : c.lastMessage) + '</small> ' +
         '<button class="btn o s" onclick="cp=\'' + esc(c.rm) + '\';tab.kom=K_QNA;go(\'kom\')">Buka</button></div>';
     }).join('') || '<small>Belum ada pesan dari pasien.</small>';
@@ -429,7 +507,12 @@ function msgHtml(m) {
   var kind = '';
   if (!qna && m.kind === 'konsultasi') kind = '<span class="k">KONSULTASI' + (m.meta && m.meta.urgency === 'segera' ? ' · SEGERA' : '') + (m.meta && m.meta.to ? ' → ' + esc(m.meta.to) : '') + '</span>';
   if (!qna && m.kind === 'handover') kind = '<span class="k">HANDOVER</span>';
-  return '<div class="m ' + (mine ? 'me' : '') + (m.urgent || (m.meta && m.meta.urgency === 'segera') ? ' urg' : '') + '" style="white-space:pre-wrap"><small>' + esc(who) + ' · ' + HQ.fmtDT(m.createdAt) + (m.urgent ? ' · MENDESAK' : '') + '</small>' + kind + esc(m.body) + '</div>';
+  var unr = (live.unrIds || []).indexOf(m.id) >= 0;
+  var tick = '';
+  if (qna && m.from === 'nakes') tick = '<span class="tick' + (m.readAt ? ' rd' : '') + '">' + (m.readAt ? '✓✓ Dibaca pasien' : '✓ Terkirim') + '</span>';
+  else if (!qna && live.dm && m.senderId === me.id) tick = '<span class="tick' + (live.peerRead >= m.id ? ' rd' : '') + '">' + (live.peerRead >= m.id ? '✓✓ Dibaca' : '✓ Terkirim') + '</span>';
+  return (m.id === live.divId ? '<div class="newline" role="separator">Pesan belum dibaca</div>' : '') +
+    '<div class="m ' + (mine ? 'me' : '') + (unr ? ' unr' : '') + (m.urgent || (m.meta && m.meta.urgency === 'segera') ? ' urg' : '') + '" style="white-space:pre-wrap"><small>' + esc(who) + ' · ' + HQ.fmtDT(m.createdAt) + (m.urgent ? ' · MENDESAK' : '') + (unr ? ' · BARU' : '') + '</small>' + kind + esc(m.body) + tick + '</div>';
 }
 function drawMsgs(force) {
   var m = q('ms'); if (!m) return;
@@ -438,8 +521,19 @@ function drawMsgs(force) {
   if (near || force) m.scrollTop = m.scrollHeight;
 }
 function addMsg(m) { if (live.msgs.some(function (x) { return x.id === m.id; })) return; live.msgs.push(m); drawMsgs(); }
-function chatBox(title, sub) {
-  return '<div class="card"><h3>' + title + '</h3>' + (sub || '') + '<div class="msgs" id="ms"></div><div class="row"><input id="ci" placeholder="Tulis pesan" maxlength="2000" onkeydown="if(event.key===\'Enter\')sendChat()"><button class="btn" onclick="sendChat()">Kirim</button></div></div>';
+function chatInner(title, sub) {
+  return '<h3>' + title + '</h3>' + (sub || '') + '<div class="msgs" id="ms"></div><div class="row"><input id="ci" placeholder="Tulis pesan" maxlength="2000" onkeydown="if(event.key===\'Enter\')sendChat()"><button class="btn" onclick="sendChat()">Kirim</button></div>';
+}
+function chatBox(title, sub) { return '<div class="card">' + chatInner(title, sub) + '</div>'; }
+/** Daftar chat pasien (kind: 'qna' = pesan pasien, 'grp' = grup tim). Yang belum dibaca di urutan atas dan diberi titik merah. */
+function ptList(kind, prev) {
+  var cnt = function (p) { return (kind === 'qna' ? UN.qnaBy[p.rm] : UN.grp[p.rm]) || 0; };
+  var sorted = pts.slice().sort(function (a, b) { return (cnt(b) > 0) - (cnt(a) > 0) || a.name.localeCompare(b.name); });
+  return '<div class="ct"><input placeholder="Cari nama atau No. RM" aria-label="Cari pasien" oninput="var v=this.value.toLowerCase();document.querySelectorAll(\'.ct button\').forEach(function(b){b.style.display=b.dataset.s.indexOf(v)>=0?\'\':\'none\'})">' +
+    sorted.map(function (p) {
+      var pv = prev && prev[p.rm] ? '<br><small style="color:var(--mu)">' + esc(prev[p.rm].length > 34 ? prev[p.rm].slice(0, 31) + '…' : prev[p.rm]) + '</small>' : '';
+      return '<button data-u="' + esc(p.rm) + '" data-k="' + kind + '" data-s="' + esc((p.name + ' ' + p.rm).toLowerCase()) + '" class="' + (p.rm === cp ? 'on' : '') + '" onclick="cp=\'' + esc(p.rm) + '\';render()"><b>' + esc(p.name) + '</b><br><small>' + esc(p.rm) + ' · zona ' + esc(p.zona || '—') + '</small>' + pv + '</button>';
+    }).join('') + '</div>';
 }
 function sendChat() {
   var i = q('ci'), t = i.value.trim(); if (!t) return;
@@ -456,16 +550,15 @@ function kom() {
   var t = tab.kom;
   if (t !== K_CHAT && t !== K_GRP && t !== K_QNA) live.kind = null;
 
-  if (t === K_CHAT) return chatTab(h);
+  if (t === K_CHAT) return refreshUnread().then(function () { return chatTab(h); });
   if (t === K_QNA) return qnaTab(h);
   if (t === K_GRP) {
     return GET('/team/rooms/patient/' + encodeURIComponent(cp)).then(function (room) {
-      return GET('/team/rooms/' + room.id + '/messages').then(function (msgs) {
-        live.kind = 'team'; live.roomId = room.id; live.msgs = msgs; POST('/team/rooms/' + room.id + '/read').catch(function () {});
+      return openRoom(room.id, false).then(function () {
         var p = patientOf(cp);
-        return { html: h + pbar() + chatBox('Diskusi tim perawatan — ' + esc(p ? p.name : cp) + ' (' + esc(cp) + ')',
+        return { html: h + '<div class="card chat">' + ptList('grp') + '<div>' + chatInner('Diskusi tim perawatan — ' + esc(p ? p.name : cp) + ' (' + esc(cp) + ')',
           '<p style="color:var(--mu);font-size:.85rem">Anggota: ' + room.members.map(function (x) { return esc(x.name.split(',')[0]); }).join(', ') + '</p>') +
-          '<p style="color:var(--mu);font-size:.8rem">Informasi klinis penting harus dicatat juga di CPPT.</p>', after: chatAfter };
+          '<p style="color:var(--mu);font-size:.8rem">Informasi klinis penting harus dicatat juga di CPPT.</p></div></div>', after: chatAfter };
       });
     });
   }
@@ -488,13 +581,12 @@ function chatTab(h) {
     staff = staff.filter(function (s) { return s.id !== me.id; });
     var list = '<div class="ct"><input placeholder="Cari nama, profesi, unit" aria-label="Cari nakes" oninput="var v=this.value.toLowerCase();document.querySelectorAll(\'.ct button\').forEach(function(b){b.style.display=b.dataset.s.indexOf(v)>=0?\'\':\'none\'})">' +
       staff.map(function (s) {
-        return '<button data-s="' + esc((s.name + ' ' + (s.profession || '') + ' ' + (s.facility || '')).toLowerCase()) + '" class="' + (s.id === live.dmUser ? 'on' : '') + '" onclick="live.dmUser=' + s.id + ';render()"><b>' + esc(s.name) + '</b><br><small>' + esc(s.profession || '') + '</small></button>';
+        return '<button data-u="' + s.id + '" data-k="dm" data-s="' + esc((s.name + ' ' + (s.profession || '') + ' ' + (s.facility || '')).toLowerCase()) + '" class="' + (s.id === live.dmUser ? 'on' : '') + '" onclick="live.dmUser=' + s.id + ';render()"><b>' + esc(s.name) + '</b><br><small>' + esc(s.profession || '') + '</small></button>';
       }).join('') + '</div>';
     var chosen = staff.find(function (s) { return s.id === live.dmUser; });
     if (!chosen) return h + '<div class="card chat">' + list + '<div><p>Pilih tenaga kesehatan di daftar untuk memulai chat.</p></div></div>';
     return POST('/team/rooms/direct', { userId: chosen.id }).then(function (room) {
-      return GET('/team/rooms/' + room.id + '/messages').then(function (msgs) {
-        live.kind = 'team'; live.roomId = room.id; live.msgs = msgs; POST('/team/rooms/' + room.id + '/read').catch(function () {});
+      return openRoom(room.id, true).then(function () {
         return { html: h + '<div class="card chat">' + list + '<div><b>' + esc(chosen.name) + '</b> <small style="color:var(--mu)">' + esc(chosen.profession || '') + '</small><div class="msgs" id="ms"></div><div class="row"><input id="ci" placeholder="Tulis pesan" maxlength="2000" onkeydown="if(event.key===\'Enter\')sendChat()"><button class="btn" onclick="sendChat()">Kirim</button></div></div></div>', after: chatAfter };
       });
     });
@@ -503,16 +595,18 @@ function chatTab(h) {
 
 function qnaTab(h) {
   return GET('/qna/conversations').then(function (conv) {
-    var unread = {}; conv.forEach(function (c) { unread[c.rm] = c.unread; });
+    var prev = {}; conv.forEach(function (c) { if (c.lastMessage) prev[c.rm] = c.lastMessage; });
     if (live.kind === 'qna' && live.qnaRm && live.qnaRm !== cp && sock) sock.emit('qna:leave', { rm: live.qnaRm });
     return HQ.emit('qna:join', { rm: cp }).then(function (r) { return r.messages; }).catch(function () { return GET('/qna/' + encodeURIComponent(cp) + '/messages'); }).then(function (msgs) {
-      live.kind = 'qna'; live.qnaRm = cp; live.msgs = msgs;
-      POST('/qna/' + encodeURIComponent(cp) + '/read').catch(function () {});
+      live.kind = 'qna'; live.qnaRm = cp; live.msgs = msgs; live.dm = false;
+      var un = msgs.filter(function (x) { return x.from === 'pasien' && !x.readAt; });
+      live.unrIds = un.map(function (x) { return x.id; }); live.divId = un.length ? un[0].id : null;
+      markQnaNow();
       var p = patientOf(cp) || { name: cp, hasAccount: false };
       var calls = p.hasAccount ? '<div class="row" style="margin:.2rem 0 .6rem"><button class="btn s" onclick="callPt(\'video\')">📹 Video call</button><button class="btn o s" onclick="callPt(\'audio\')">📞 Telepon</button></div>' : '';
-      return { html: h + pbar(function (x) { return x.name + ' — ' + x.rm + (unread[x.rm] ? ' (' + unread[x.rm] + ' baru)' : ''); }) +
-        chatBox('TEMU B — ' + esc(p.name) + ' (' + esc(cp) + ') <span class="live ' + (sock && sock.connected ? '' : 'off') + '">' + (sock && sock.connected ? 'tersinkron' : 'terputus') + '</span>', calls) +
-        '<p style="color:var(--mu);font-size:.8rem">Pesan pasien berisi kata kunci darurat (nyeri dada, pingsan, sesak saat istirahat) ditandai MENDESAK.</p>', after: chatAfter };
+      return { html: h + '<div class="card chat">' + ptList('qna', prev) + '<div>' +
+        chatInner('TEMU B — ' + esc(p.name) + ' (' + esc(cp) + ') <span class="live ' + (sock && sock.connected ? '' : 'off') + '">' + (sock && sock.connected ? 'tersinkron' : 'terputus') + '</span>', calls) +
+        '<p style="color:var(--mu);font-size:.8rem">Pesan pasien berisi kata kunci darurat (nyeri dada, pingsan, sesak saat istirahat) ditandai MENDESAK.</p></div></div>', after: chatAfter };
     });
   });
 }

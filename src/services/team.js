@@ -93,11 +93,13 @@ export function listRooms(userId) {
     .map((r) => ({
       id: r.id, type: r.type, name: r.name, patientRm: r.patient_rm,
       unread: r.unread, lastMessage: r.last_body, lastAt: r.last_at,
+      // untuk chat langsung: id lawan bicara (kunci room: dm:<idKecil>:<idBesar>)
+      peerId: r.type === 'direct' && r.key ? Number(r.key.split(':').slice(1).find((x) => Number(x) !== userId)) || null : null,
     }));
 }
 
 export function listMembers(roomId) {
-  return db.prepare(`SELECT u.id, u.name, u.profession, u.facility
+  return db.prepare(`SELECT u.id, u.name, u.profession, u.facility, tm.last_read_id AS lastReadId
     FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.room_id = ?`).all(roomId);
 }
 
