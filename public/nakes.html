@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HatiQu — Portal Tenaga Kesehatan</title>
+<style>
+
+:root{--bg:#f2f7fc;--sf:#fff;--tx:#12263f;--mu:#5b6f87;--bd:#d9e5f2;--pr:#0d3b73;--lt:#e3f0fc;--ac:#2e8ae6;--g:#1f9d62;--gb:#dff5e9;--y:#b7791f;--yb:#fdf1d6;--r:#c53030;--rb:#fde2e2;--sh:#0d3b73}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0c1726;--sf:#132339;--tx:#e6eef8;--mu:#93a8c2;--bd:#25405f;--pr:#7db7f5;--lt:#1a3556;--ac:#5aa8f5;--gb:#12392a;--yb:#40300f;--rb:#431b1b;--g:#5fd6a0;--y:#f0c36a;--r:#f59a9a;--sh:#06101d}}
+*{box-sizing:border-box}html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+h1,h2,h3{margin:0 0 .5rem;line-height:1.25}h2{font-size:1.25rem}h3{font-size:1rem}
+button,input,select,textarea{font:inherit;color:var(--tx)}
+input,select,textarea{width:100%;padding:.55rem .7rem;border:1px solid var(--bd);border-radius:8px;background:var(--sf)}
+textarea{min-height:60px;resize:vertical}label{display:block;font-size:.85rem;color:var(--mu);margin:.6rem 0 .2rem}
+.btn{background:var(--pr);color:var(--sf);border:0;border-radius:8px;padding:.5rem .9rem;cursor:pointer;font-weight:600}
+:root[data-theme="dark"] .btn{color:#06101d}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{color:#06101d}}
+.btn.o{background:transparent;color:var(--pr);border:1px solid var(--pr)}.btn.s{padding:.25rem .6rem;font-size:.82rem}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.logo{display:flex;align-items:center;gap:.6rem;font-weight:700;font-size:1.3rem;color:var(--pr)}
+.logo i{font-style:normal;background:var(--pr);color:var(--sf);border-radius:10px;width:38px;height:38px;display:grid;place-items:center}
+#app{display:none;height:100%;grid-template-columns:230px 1fr}
+aside{background:var(--pr);color:#fff;padding:1rem .7rem;overflow-y:auto}
+:root[data-theme="dark"] aside,aside{--x:1}
+aside .logo{color:#fff;margin-bottom:1rem}aside .logo i{background:#fff;color:#0d3b73}
+nav button{display:flex;gap:.6rem;width:100%;align-items:center;background:none;border:0;color:#cfe3f8;padding:.55rem .7rem;border-radius:8px;cursor:pointer;text-align:left}
+nav button:hover{background:rgba(255,255,255,.1)}nav button.on{background:#fff;color:#0d3b73;font-weight:600}
+.main{display:flex;flex-direction:column;min-width:0;height:100%}
+header{display:flex;gap:.6rem;align-items:center;padding:.7rem 1.1rem;background:var(--sf);border-bottom:1px solid var(--bd)}
+header .who{flex:1;min-width:0}header b{display:block}header small{color:var(--mu)}
+#menu{display:none}
+#pg{padding:1.1rem;overflow:auto;flex:1}
+.grid{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:1rem;margin-bottom:.9rem}.grid .card{margin:0}
+.stat b{font-size:1.8rem;color:var(--pr);display:block}.stat span{color:var(--mu);font-size:.85rem}
+.tbl{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:.5rem .6rem;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}th{color:var(--mu);font-weight:600;font-size:.8rem}
+.bd{display:inline-block;padding:.1rem .55rem;border-radius:99px;font-size:.78rem;font-weight:600;background:var(--lt);color:var(--pr)}
+.bd.g{background:var(--gb);color:var(--g)}.bd.y{background:var(--yb);color:var(--y)}.bd.r{background:var(--rb);color:var(--r)}
+.tabs{display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.9rem}
+.tabs button{border:1px solid var(--bd);background:var(--sf);border-radius:99px;padding:.3rem .9rem;cursor:pointer}
+.tabs button.on{background:var(--pr);color:var(--sf);border-color:var(--pr)}
+.pb{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;background:var(--lt);border-radius:10px;padding:.6rem .9rem;margin-bottom:.9rem}
+.pb select{width:auto;max-width:100%}
+.two{display:grid;gap:.9rem;grid-template-columns:1fr 1fr}
+.tl{border-left:3px solid var(--ac);padding-left:.8rem;margin-bottom:.9rem}.tl small{color:var(--mu)}
+.chat{display:grid;grid-template-columns:200px 1fr;gap:.9rem}
+.ct button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--bd);padding:.55rem;cursor:pointer}
+.ct button.on{background:var(--lt)}
+.msgs{height:300px;overflow:auto;display:flex;flex-direction:column;gap:.4rem;padding:.4rem}
+.m{max-width:80%;padding:.4rem .7rem;border-radius:12px;background:var(--lt)}.m.me{align-self:flex-end;background:var(--pr);color:var(--sf)}
+:root[data-theme="dark"] .m.me{color:#06101d}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .m.me{color:#06101d}}
+.m small{display:block;opacity:.75;font-size:.72rem}
+.row{display:flex;gap:.5rem}
+#nt{position:absolute;right:1rem;top:3.6rem;width:min(330px,92vw);z-index:5;display:none;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+#toast{position:fixed;bottom:calc(1rem + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--pr);color:var(--sf);padding:.6rem 1rem;border-radius:8px;display:none;z-index:9}
+.ro{opacity:.6}
+.logo i{background:#fff;border:1px solid var(--bd);overflow:hidden;width:44px;height:44px}.logo i img{width:100%;height:100%;object-fit:contain}.tag{font-size:.8rem;color:var(--mu);margin:.2rem 0 0}
+.live{font-size:.78rem;padding:.1rem .5rem;border-radius:99px;background:var(--gb);color:var(--g)}.live.off{background:var(--yb);color:var(--y)}
+pre{background:var(--lt);padding:.7rem;border-radius:8px;overflow:auto;font-size:.78rem}
+@media(max-width:820px){#app{grid-template-columns:1fr}aside{position:fixed;inset:0 25% 0 0;z-index:8;display:none;padding-top:calc(1rem + env(safe-area-inset-top,0px))}aside.open{display:block}#menu{display:block}.two,.chat{grid-template-columns:1fr}}
+
+#boot{min-height:100%;display:grid;place-items:center;color:var(--mu)}
+.chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--bd);border-radius:99px;padding:.1rem .6rem;font-size:.78rem;background:var(--sf)}
+.m .k{display:inline-block;font-size:.68rem;font-weight:700;border-radius:6px;padding:0 .35rem;margin-right:.3rem;background:rgba(0,0,0,.12)}
+.m.urg{outline:2px solid var(--r)}
+.err{color:var(--r);font-size:.85rem}
+.tag{font-size:.8rem;color:var(--mu);margin:.2rem 0 0}
+.badge-n{display:inline-block;min-width:1.2rem;text-align:center;border-radius:99px;background:var(--r);color:#fff;font-size:.7rem;font-weight:700;padding:0 .35rem;margin-left:.3rem}
+.sel td{background:var(--lt)}
+.btn[disabled]{opacity:.6;cursor:wait}
+details>summary{cursor:pointer;font-weight:600;margin-bottom:.5rem}
+
+</style>
+</head>
+<body>
+<div id="boot">Memuat portal…</div>
+<div id="app">
+<aside id="sb"><div class="logo"><i><img src="/img/logo.png" alt="Logo HatiQu"></i>HatiQu</div><nav id="nav"></nav></aside>
+<div class="main" style="position:relative">
+<header><button class="btn o s" id="menu" onclick="sb.classList.toggle('open')" aria-label="Menu">☰</button>
+<div class="who"><b id="hi"></b><small id="fas"></small></div>
+<span class="live off" id="lv" title="Status koneksi realtime">menghubungkan…</span>
+<button class="btn o s" onclick="toggleNt()" aria-label="Notifikasi">🔔 <span id="nc"></span></button>
+<button class="btn s" onclick="HQ.logout()">Keluar</button></header>
+<div class="card" id="nt"></div>
+<div id="pg"></div></div></div>
+<script src="/js/common.js"></script>
+<script src="/js/nakes.js"></script>
+</body>
+</html>

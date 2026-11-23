@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HatiQu — Masuk</title>
+<style>
+:root{--bg:#eaf3fa;--sf:#fff;--tx:#12263f;--mu:#5b6f87;--bd:#d3e1ee;--pr:#0d3b73;--lt:#e3f0fc;--ac:#2e8ae6;--ok:#1f9d62;--er:#c53030;--erb:#fde2e2;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#0c1726;--sf:#132339;--tx:#e6eef8;--mu:#93a8c2;--bd:#25405f;--pr:#7db7f5;--lt:#1a3556;--ac:#5aa8f5;--ok:#5fd6a0;--er:#f59a9a;--erb:#431b1b}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:linear-gradient(160deg,var(--lt),var(--bg));color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;display:grid;place-items:center;padding:1rem;padding-top:calc(1rem + env(safe-area-inset-top,0px));padding-bottom:calc(1rem + env(safe-area-inset-bottom,0px))}
+.card{width:100%;max-width:420px;background:var(--sf);border:1px solid var(--bd);border-radius:16px;padding:1.5rem;box-shadow:0 8px 30px rgba(13,59,115,.12)}
+.brand{text-align:center;margin-bottom:1rem}
+.brand .lg{width:96px;height:96px;margin:0 auto .4rem;background:#fff;border:1px solid var(--bd);border-radius:22px;display:grid;place-items:center;overflow:hidden}
+.brand .lg img{width:100%;height:100%;object-fit:contain}
+.brand h1{margin:0;font-size:1.5rem;color:var(--pr)}
+.brand p{margin:.1rem 0 0;color:var(--mu);font-size:.85rem}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--lt);border-radius:12px;padding:4px;margin:1rem 0 .6rem}
+.seg button{border:0;background:none;border-radius:9px;padding:.55rem .4rem;font:inherit;font-weight:600;color:var(--mu);cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--sf);color:var(--pr);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.sub{display:flex;gap:1rem;margin:.2rem 0 .4rem;font-size:.9rem}
+.sub button{border:0;background:none;font:inherit;color:var(--mu);cursor:pointer;padding:.2rem 0;border-bottom:2px solid transparent}
+.sub button[aria-selected="true"]{color:var(--pr);font-weight:600;border-color:var(--pr)}
+h2{font-size:1.1rem;margin:.3rem 0 .2rem}
+p.note{color:var(--mu);font-size:.85rem;margin:0 0 .4rem}
+label{display:block;font-size:.85rem;color:var(--mu);margin:.7rem 0 .2rem}
+input{width:100%;padding:.65rem .75rem;border:1px solid var(--bd);border-radius:10px;background:var(--sf);color:var(--tx);font:inherit}
+input:focus-visible,button:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+.chk{display:flex;align-items:center;gap:.5rem;margin:.6rem 0 0;font-size:.85rem;color:var(--mu)}
+.chk input{width:auto}
+.go{width:100%;margin-top:1rem;background:var(--pr);color:var(--sf);border:0;border-radius:10px;padding:.75rem;font:inherit;font-weight:700;cursor:pointer}
+.go:disabled{opacity:.6;cursor:wait}
+.msg{min-height:1.3rem;margin-top:.6rem;font-size:.88rem;border-radius:8px}
+.msg.err{color:var(--er);background:var(--erb);padding:.45rem .6rem}
+.msg.ok{color:var(--ok)}
+.hint{font-size:.8rem;color:var(--mu);background:var(--lt);border-radius:10px;padding:.6rem .75rem;margin-top:1rem;display:none}
+.hint b{color:var(--tx)}
+.fine{text-align:center;color:var(--mu);font-size:.75rem;margin:.9rem 0 0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">
+    <div class="lg"><img src="/img/logo.png" alt="Logo HatiQu"></div>
+    <h1>HatiQu</h1>
+    <p>Your Heart, Our Priority</p>
+  </div>
+
+  <div class="seg" role="tablist" aria-label="Jenis akun">
+    <button role="tab" id="t-pasien" aria-selected="true" aria-controls="p-pasien">🧑 Pasien</button>
+    <button role="tab" id="t-nakes" aria-selected="false" aria-controls="p-nakes">🩺 Tenaga Kesehatan</button>
+  </div>
+
+  <!-- ===== PASIEN: No. RM ===== -->
+  <section id="p-pasien" role="tabpanel" aria-labelledby="t-pasien">
+    <div class="sub" role="tablist" aria-label="Pasien">
+      <button role="tab" id="s-masuk" aria-selected="true">Masuk</button>
+      <button role="tab" id="s-daftar" aria-selected="false">Buat akun baru</button>
+    </div>
+
+    <form id="f-masuk" novalidate>
+      <h2>Masuk dengan nomor rekam medis</h2>
+      <p class="note">Setiap pasien hanya dapat membuka datanya sendiri.</p>
+      <label for="m-rm">Nomor rekam medis (RM)</label>
+      <input id="m-rm" name="rm" inputmode="numeric" autocomplete="username" placeholder="contoh 12-34-56" maxlength="20" required>
+      <label for="m-pw">Kata sandi</label>
+      <input id="m-pw" name="password" type="password" autocomplete="current-password" required>
+      <label class="chk"><input type="checkbox" data-show="m-pw"> Tampilkan kata sandi</label>
+      <div class="msg" id="m-msg" role="alert"></div>
+      <button class="go" type="submit">Masuk</button>
+    </form>
+
+    <form id="f-daftar" novalidate hidden>
+      <h2>Buat akun baru</h2>
+      <p class="note">Verifikasi dengan nomor RM dan tanggal lahir yang tercatat di rumah sakit. Pasien harus sudah didaftarkan petugas.</p>
+      <label for="d-rm">Nomor rekam medis (RM)</label>
+      <input id="d-rm" name="rm" inputmode="numeric" autocomplete="off" placeholder="contoh 12-34-56" maxlength="20" required>
+      <label for="d-tl">Tanggal lahir</label>
+      <input id="d-tl" name="birthDate" type="date" required>
+      <label for="d-pw">Kata sandi baru (minimal 8 karakter)</label>
+      <input id="d-pw" name="password" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="d-pw2">Ulangi kata sandi</label>
+      <input id="d-pw2" type="password" autocomplete="new-password" required>
+      <label class="chk"><input type="checkbox" data-show="d-pw,d-pw2"> Tampilkan kata sandi</label>
+      <div class="msg" id="d-msg" role="alert"></div>
+      <button class="go" type="submit">Buat akun dan masuk</button>
+    </form>
+  </section>
+
+  <!-- ===== NAKES: email ===== -->
+  <section id="p-nakes" role="tabpanel" aria-labelledby="t-nakes" hidden>
+    <form id="f-nakes" novalidate>
+      <h2>Portal Tenaga Kesehatan</h2>
+      <p class="note">Masuk dengan email yang didaftarkan oleh fasilitas Anda.</p>
+      <label for="n-em">Email</label>
+      <input id="n-em" name="email" type="email" autocomplete="username" placeholder="nama@fasilitas.id" required>
+      <label for="n-pw">Kata sandi</label>
+      <input id="n-pw" name="password" type="password" autocomplete="current-password" required>
+      <label class="chk"><input type="checkbox" data-show="n-pw"> Tampilkan kata sandi</label>
+      <div class="msg" id="n-msg" role="alert"></div>
+      <button class="go" type="submit">Masuk</button>
+    </form>
+  </section>
+
+  <div class="hint" id="hint">
+    <b>Akun demo</b> (muncul hanya di mode pengembangan, kata sandi semua akun <b>demo123</b>):<br>
+    Pasien: RM <b>12-34-56</b> (Tn. Budi). Buat akun baru: RM <b>12-34-78</b> lahir <b>02-03-1954</b>.<br>
+    Nakes: <b>dr.rina@hfcare.demo</b> (dokter), <b>ns.dewi@hfcare.demo</b> (perawat), <b>apt.dinda@hfcare.demo</b> (apoteker).
+  </div>
+  <p class="fine">Data medis dilindungi. Jangan bagikan kata sandi Anda.</p>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+
+  // Sudah login? langsung ke aplikasi yang sesuai.
+  var s0 = HQ.session.get();
+  if (s0 && s0.token) {
+    HQ.api('/auth/me').then(function (me) { location.replace(HQ.home(me.user.role)); }).catch(function () { HQ.session.clear(); });
+  }
+  fetch(HQ.BASE + '/health').then(function (r) { return r.json(); }).then(function (h) { if (h && h.demo) $('#hint').style.display = 'block'; }).catch(function () {});
+
+  /* tab jenis akun */
+  function pick(which) {
+    var p = which === 'pasien';
+    $('#t-pasien').setAttribute('aria-selected', p); $('#t-nakes').setAttribute('aria-selected', !p);
+    $('#p-pasien').hidden = !p; $('#p-nakes').hidden = p;
+    (p ? $('#m-rm') : $('#n-em')).focus();
+  }
+  $('#t-pasien').onclick = function () { pick('pasien'); };
+  $('#t-nakes').onclick = function () { pick('nakes'); };
+  function sub(which) {
+    var m = which === 'masuk';
+    $('#s-masuk').setAttribute('aria-selected', m); $('#s-daftar').setAttribute('aria-selected', !m);
+    $('#f-masuk').hidden = !m; $('#f-daftar').hidden = m;
+    (m ? $('#m-rm') : $('#d-rm')).focus();
+  }
+  $('#s-masuk').onclick = function () { sub('masuk'); };
+  $('#s-daftar').onclick = function () { sub('daftar'); };
+
+  /* tampilkan kata sandi */
+  document.querySelectorAll('[data-show]').forEach(function (c) {
+    c.onchange = function () { c.dataset.show.split(',').forEach(function (id) { document.getElementById(id).type = c.checked ? 'text' : 'password'; }); };
+  });
+
+  /* format No. RM saat mengetik: 123456 -> 12-34-56 */
+  function fmtRm(e) {
+    var d = e.target.value.replace(/\D/g, '');
+    if (d.length <= 6) e.target.value = d.replace(/^(\d{1,2})(\d{1,2})?(\d{1,2})?$/, function (_, a, b, c) { return [a, b, c].filter(Boolean).join('-'); });
+  }
+  $('#m-rm').addEventListener('input', fmtRm); $('#d-rm').addEventListener('input', fmtRm);
+
+  function msg(id, text, ok) { var e = $(id); e.textContent = text || ''; e.className = 'msg' + (text ? (ok ? ' ok' : ' err') : ''); }
+  function busy(form, on) { var b = form.querySelector('.go'); b.disabled = on; }
+
+  function done(res, target) {
+    HQ.session.set({ token: res.token, user: res.user, patientRm: res.patientRm });
+    location.href = target;
+  }
+
+  $('#f-masuk').onsubmit = function (e) {
+    e.preventDefault();
+    var rm = $('#m-rm').value.trim(), pw = $('#m-pw').value;
+    if (!rm || !pw) return msg('#m-msg', 'Isi nomor rekam medis dan kata sandi.');
+    msg('#m-msg', ''); busy(e.target, true);
+    HQ.api('/auth/login', { method: 'POST', anon: true, body: { rm: rm, password: pw } })
+      .then(function (r) { done(r, '/pasien.html'); })
+      .catch(function (er) { msg('#m-msg', er.message); busy(e.target, false); });
+  };
+
+  $('#f-nakes').onsubmit = function (e) {
+    e.preventDefault();
+    var em = $('#n-em').value.trim(), pw = $('#n-pw').value;
+    if (!em || !pw) return msg('#n-msg', 'Isi email dan kata sandi.');
+    msg('#n-msg', ''); busy(e.target, true);
+    HQ.api('/auth/login', { method: 'POST', anon: true, body: { email: em, password: pw } })
+      .then(function (r) { done(r, '/nakes.html'); })
+      .catch(function (er) { msg('#n-msg', er.status === 400 ? 'Format email tidak valid.' : er.message); busy(e.target, false); });
+  };
+
+  $('#f-daftar').onsubmit = function (e) {
+    e.preventDefault();
+    var rm = $('#d-rm').value.trim(), tl = $('#d-tl').value, pw = $('#d-pw').value, pw2 = $('#d-pw2').value;
+    if (!rm || !tl) return msg('#d-msg', 'Isi nomor rekam medis dan tanggal lahir.');
+    if (pw.length < 8) return msg('#d-msg', 'Kata sandi minimal 8 karakter.');
+    if (pw !== pw2) return msg('#d-msg', 'Kata sandi dan pengulangannya tidak sama.');
+    msg('#d-msg', ''); busy(e.target, true);
+    HQ.api('/auth/register', { method: 'POST', anon: true, body: { rm: rm, birthDate: tl, password: pw } })
+      .then(function (r) { msg('#d-msg', 'Akun dibuat. Mengalihkan…', true); done(r, '/pasien.html'); })
+      .catch(function (er) { msg('#d-msg', er.message); busy(e.target, false); });
+  };
+})();
+</script>
+</body>
+</html>
