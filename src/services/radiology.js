@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { db, audit } from '../db/index.js';
 import { HttpError } from '../util.js';
-import { notifyNakes } from './notify.js';
+import { notifyNakes, notifyUser } from './notify.js';
 
 export const MODALITIES = ['Rontgen', 'CT Scan', 'MRI', 'USG', 'Angiografi', 'Lainnya'];
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -50,7 +50,7 @@ export function buildRadiologySnapshot(patientId, ids) {
     .all(patientId, ...list).map(fmt);
 }
 
-export function addRadiology({ patient, user, modality, title, examinedAt, findings, impression, image }) {
+export function addRadiology({ patient, user, modality, title, examinedAt, findings, impression, image, notifyPatient = true }) {
   const raw = String(image.data).replace(/^data:[^,]*,/, '');
   if (raw.length > Math.ceil(MAX_IMAGE_BYTES * 1.4)) throw new HttpError(413, 'Gambar terlalu besar (maks. 8 MB)');
   const buf = Buffer.from(raw, 'base64');
@@ -74,7 +74,12 @@ export function addRadiology({ patient, user, modality, title, examinedAt, findi
   }
   audit(user.id, 'radiology.upload', patient.id, `result:${id} ${modality}`);
   notifyNakes({ icon: '🩻', text: `Hasil radiologi baru (${title}) untuk ${patient.name} (${patient.rm})`, patientId: patient.id, exceptUserId: user.id });
-  return listRadiology(patient.id).find((r) => r.id === id);
+  // Beri tahu pasien bahwa hasilnya sudah tersedia (isi temuan tidak dikirim lewat notifikasi; pasien membukanya di menu Hasil Radiologi).
+  const patientNotified = !!(notifyPatient && patient.user_id);
+  if (patientNotified) {
+    notifyUser(patient.user_id, { icon: '🩻', text: `Hasil radiologi Anda (${title}) sudah tersedia. Buka menu Hasil Radiologi.`, patientId: patient.id });
+  }
+  return { ...listRadiology(patient.id).find((r) => r.id === id), patientNotified };
 }
 
 /** Baris + path file untuk melayani gambar. Nama file diambil dari DB dan dibersihkan dengan basename. */

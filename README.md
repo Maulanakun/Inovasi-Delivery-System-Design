@@ -74,6 +74,8 @@ Pesan punya `kind`: `text`, `konsultasi` (`meta:{to,urgency:'rutin'|'segera'}`),
 - `POST /api/patients/:rm/radiology` — **hanya dokter spesialis radiologi**. Body JSON: `{modality, title, examinedAt:'YYYY-MM-DD', findings, impression, image:{name, data:<base64>}}`. Gambar JPG/PNG/WebP maks. 8 MB (tipe dicek dari isi file, bukan nama). File disimpan di `<folder data>/radiology/` (bukan folder publik).
 - `GET /api/radiology/:id/image` — gambar, butuh token (nakes, atau pasien pemilik). Di frontend diambil dengan `fetch` + header `Authorization` lalu dijadikan blob URL.
 - Resume: `content.radiologiIds: number[]` pada `POST/PATCH` resume memilih hasil yang dimasukkan. Teks hasil dibekukan di `snapshot.radiology` saat resume difinalisasi; gambar dirujuk lewat id.
+- UI nakes: tab **Radiologi** di menu *Lab dan Penunjang* (ringkasan, pencarian/filter hasil lab, tren NT-proBNP/kreatinin/kalium, kartu hasil radiologi, form unggah khusus radiolog).
+- Pasien: menu *Hasil Radiologi* menampilkan hasil asli (temuan, kesan, gambar). Saat diunggah, pasien dapat diberi notifikasi (`notifyPatient`, default true; isi temuan tidak ikut dikirim lewat notifikasi).
 - Profesi baru `Dokter spesialis radiologi` (tetap bisa melakukan hal yang boleh untuk dokter lain). Demo: `dr.arman@hfcare.demo`.
 
 **5. Monitoring**

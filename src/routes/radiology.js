@@ -19,6 +19,7 @@ const uploadSchema = z.object({
   examinedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal YYYY-MM-DD'),
   findings: z.string().trim().min(1, 'Isi temuan').max(4000),
   impression: z.string().trim().min(1, 'Isi kesan').max(2000),
+  notifyPatient: z.boolean().default(true),
   image: z.object({ name: z.string().max(200).default(''), data: z.string().min(1, 'Gambar wajib diunggah') }),
 });
 

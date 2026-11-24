@@ -27,6 +27,15 @@
     document.addEventListener('keydown', esc2);
     o.appendChild(im); o.appendChild(b); document.body.appendChild(o); b.focus();
   }
+/** Ambil gambar radiologi (endpoint terautentikasi) lalu pasang ke <img data-rid>; klik = perbesar di halaman. */
+  function hydrateRad(root) {
+    root.querySelectorAll('img[data-rid]').forEach(function (im) {
+      fetch(HQ.BASE + '/api/radiology/' + im.getAttribute('data-rid') + '/image', { headers: { Authorization: 'Bearer ' + (HQ.session.get() || {}).token } })
+        .then(function (x) { if (!x.ok) throw new Error(); return x.blob(); })
+        .then(function (b) { var u = URL.createObjectURL(b); im.src = u; im.onclick = function () { zoomImg(u, im.alt); }; })
+        .catch(function () { im.alt = 'Gambar tidak dapat dimuat'; });
+    });
+  }
   var PTU = 0; // jumlah balasan perawat yang belum dibaca
 
   /* ---------- penanda pesan belum dibaca (badge menu + banner) ---------- */
@@ -65,7 +74,7 @@
   var LOGS = {};
 
   /* ---------- menu berisi contoh (khusus pasien demo) ---------- */
-  var DEMO_ONLY = ['rad', 'pa', 'alat', 'skdp', 'riwayat', 'biaya', 'radiot', 'jdwrad', 'alur'];
+  var DEMO_ONLY = ['pa', 'alat', 'skdp', 'riwayat', 'biaya', 'radiot', 'jdwrad', 'alur'];
   window.HQ_gated = function (id) {
     if (PT.rm === DEMO_RM) return false;
     if (DEMO_ONLY.indexOf(id) >= 0) return true;
@@ -85,6 +94,24 @@
       ['🚻', 'Jenis kelamin', esc(PT.sex || '—')], ['🩺', 'Diagnosis', esc(PT.dx || '—')],
       ['💧', 'Berat badan kering', PT.dry ? cm(PT.dry) + ' kg (acuan pemantauan)' : '—'],
       ['👵', 'Pendamping', PT.companion ? esc(PT.companion) + (PT.companionPhone ? ', ' + esc(PT.companionPhone) : '') : 'Belum tercatat']]);
+  };
+
+/* ---------- Hasil radiologi (data asli dari dokter spesialis radiologi) ---------- */
+  var demoRad = S.rad;
+  S.rad = function (p) {
+    p.innerHTML = '<h2>Hasil Radiologi</h2><p class="sub">Memuat…</p>';
+    GET('/patients/' + enc(PT.rm) + '/radiology').then(function (list) {
+      if (!list.length && PT.rm === DEMO_RM && demoRad) return demoRad(p); // akun demo tanpa data: tampilkan contoh bawaan
+      var fresh = function (r) { return Date.now() - Date.parse(r.createdAt) < 3 * 864e5; };
+      p.innerHTML = '<h2>Hasil Radiologi</h2><p class="sub">Hasil foto dan pemeriksaan radiologi Anda, dibaca oleh dokter spesialis radiologi. Bila ada yang kurang jelas, tanyakan ke dokter atau perawat Anda; jangan menafsirkannya sendiri.</p>' +
+        (list.length ? list.map(function (r) {
+          return '<div style="margin-top:12px;border:1px solid var(--bd,#d9e5f2);border-radius:12px;padding:10px"><b>' + esc(r.title) + '</b> · ' + esc(r.modality) +
+            (fresh(r) ? ' <span style="color:var(--pri);font-weight:700">· Baru</span>' : '') + '<br><small>' + HQ.fmtD(r.examinedAt) + ' · ' + esc(r.radiologist) + '</small>' +
+            '<img data-rid="' + r.id + '" alt="' + esc(r.title) + '" style="display:block;max-width:100%;max-height:260px;margin:8px 0;border-radius:8px;cursor:zoom-in;background:#eef3f8">' +
+            '<p><b>Temuan:</b><br>' + esc(r.findings).replace(/\n/g, '<br>') + '</p><p><b>Kesan:</b><br>' + esc(r.impression).replace(/\n/g, '<br>') + '</p></div>';
+        }).join('') : '<div class="empty">Belum ada hasil radiologi. Anda akan diberi tahu saat hasilnya tersedia.</div>');
+      hydrateRad(p);
+    }).catch(function (e) { p.innerHTML = '<h2>Hasil Radiologi</h2><p class="err">' + esc(e.message) + '</p>'; });
   };
 
   /* ---------- Hasil laboratorium ---------- */
@@ -134,12 +161,7 @@
           }).join('') : '') +
           '<button class="btn alt" onclick="window.print()">🖨️ Cetak / simpan PDF</button>';
         document.getElementById('bl').onclick = list;
-        p.querySelectorAll('img[data-rid]').forEach(function (im) {
-          fetch(HQ.BASE + '/api/radiology/' + im.getAttribute('data-rid') + '/image', { headers: { Authorization: 'Bearer ' + (HQ.session.get() || {}).token } })
-            .then(function (x) { if (!x.ok) throw new Error(); return x.blob(); })
-            .then(function (b) { var u = URL.createObjectURL(b); im.src = u; im.onclick = function () { zoomImg(u, im.alt); }; })
-            .catch(function () { im.alt = 'Gambar tidak dapat dimuat'; });
-        });
+        hydrateRad(p);
       }).catch(function (e) { HQ.toast(e.message); });
     }
     list();
@@ -313,6 +335,12 @@
     home();
     loadLogs().catch(function () {});
     refreshUnread();
+    GET('/notifications').then(function (ns) {
+      var u = ns.filter(function (n) { return !n.read && n.icon === '🩻'; });
+      if (!u.length) return;
+      HQ.toast('🩻 ' + (u.length > 1 ? u.length + ' hasil radiologi baru tersedia. Buka menu Hasil Radiologi.' : u[0].text));
+      return HQ.api('/notifications/read', { method: 'POST' });
+    }).catch(function () {});
     return HQ.connect().then(function (sock) {
       HQ.Calls.init(sock);
       sock.on('qna:message', function (x) {
